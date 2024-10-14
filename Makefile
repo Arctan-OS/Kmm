@@ -31,6 +31,10 @@ OFILES := $(CFILES:.c=.o) $(ASFILES:.asm=.o)
 .PHONY: all
 all: $(OFILES)
 
+.PHONY: test
+test:
+	$(CC) $(CFILES) -I src/c/include -I test/include -o testing
+
 .PHONY: clean
 clean:
 	find . -name "*.o" -delete
