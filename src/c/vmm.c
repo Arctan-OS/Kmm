@@ -27,11 +27,17 @@
 #include <mm/vmm.h>
 #include <mm/algo/buddy.h>
 #include <arch/pager.h>
+#include <lib/util.h>
 
 static struct ARC_BuddyMeta vmm_meta = { 0 };
 
 void *vmm_alloc(size_t size) {
 	void *virtual = buddy_alloc(&vmm_meta, size);
+
+	if (virtual == NULL) {
+		ARC_DEBUG(ERR, "Failed to allocate\n");
+		return NULL;
+	}
 
 	if (pager_fly_map((uintptr_t)virtual, size, 0) != 0) {
 		ARC_DEBUG(ERR, "Failed to fly map %p (%lu B)\n", virtual, size);
