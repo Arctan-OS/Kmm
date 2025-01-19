@@ -29,6 +29,7 @@
 
 #include <global.h>
 
+// These functions return virtual addresses, but ARC_HHDM_TO_PHYS can be used on them
 void *pmm_alloc();
 void *pmm_contig_alloc(size_t objects);
 void *pmm_free(void *address);
