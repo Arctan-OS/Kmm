@@ -49,7 +49,7 @@ void *freelist_alloc(struct ARC_FreelistMeta *meta) {
 		meta = meta->next;
 	}
 
-	if (meta == NULL) {
+	if (meta == NULL || meta->head == NULL) {
 		ARC_DEBUG(ERR, "Found meta is NULL\n");
 		return NULL;
 	}

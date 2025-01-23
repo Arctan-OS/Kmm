@@ -39,7 +39,7 @@ void *vmm_alloc(size_t size) {
 		return NULL;
 	}
 
-	if (pager_fly_map(NULL, (uintptr_t)virtual, size, 0) != 0) {
+	if (pager_fly_map(NULL, (uintptr_t)virtual, size, 1 << ARC_PAGER_RW) != 0) {
 		ARC_DEBUG(ERR, "Failed to fly map %p (%lu B)\n", virtual, size);
 		buddy_free(&vmm_meta, virtual);
 		return NULL;
