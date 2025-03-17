@@ -26,18 +26,18 @@
  * Implements functions used for in kernel allocations.
 */
 #include <mm/allocator.h>
-#include <mm/algo/slab.h>
+#include <mm/algo/pslab.h>
 #include <mm/vmm.h>
 #include <global.h>
 
-static struct ARC_SlabMeta meta = { 0 };
+static struct ARC_PSlabMeta meta = { 0 };
 
 void *alloc(size_t size) {
 	if (size > PAGE_SIZE / 2) {
 		return vmm_alloc(max(PAGE_SIZE, size));
 	}
 
-	return slab_alloc(&meta, size);
+	return pslab_alloc(&meta, size);
 }
 
 void *calloc(size_t size, size_t count) {
@@ -47,11 +47,11 @@ void *calloc(size_t size, size_t count) {
 		return vmm_alloc(max(PAGE_SIZE, size));
 	}
 
-	return slab_alloc(&meta, final);
+	return pslab_alloc(&meta, final);
 }
 
 void *free(void *address) {
-	void *ret = slab_free(&meta, address);
+	void *ret = pslab_free(&meta, address);
 
 	if (ret == NULL && address != NULL) {
 		ret = vmm_free(address);
@@ -91,5 +91,5 @@ int init_allocator(size_t pages) {
 	//       reports an error. This is not desired here, as the allocation may be allocated using
 	//       the VMM instead. The free function resorts to reporting its own error in the event
 	//       it fails
-	return init_slab(&meta, range, range_length, 1) != range + range_length;
+	return init_pslab(&meta, range, range_length, 1) != range + range_length;
 }

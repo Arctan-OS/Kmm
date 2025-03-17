@@ -1,5 +1,5 @@
 /**
- * @file freelist.c
+ * @file pfreelist.c
  *
  * @author awewsomegamer <awewsomegamer@gmail.com>
  *
@@ -23,9 +23,8 @@
  * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
  *
  * @DESCRIPTION
- * Abstract freelist implementation.
 */
-#include <mm/algo/freelist.h>
+#include <mm/algo/pfreelist.h>
 #include <lib/atomics.h>
 #include <lib/util.h>
 #include <global.h>
@@ -36,7 +35,7 @@
 
 // Allocate one object in given list
 // Return: non-NULL = success
-void *freelist_alloc(struct ARC_FreelistMeta *meta) {
+void *pfreelist_alloc(struct ARC_PFreelistMeta *meta) {
 	mutex_lock(&meta->mutex);
 
 	while (meta != NULL && meta->free_objects < 1) {
@@ -65,7 +64,7 @@ void *freelist_alloc(struct ARC_FreelistMeta *meta) {
 	return address;
 }
 
-void *freelist_contig_alloc(struct ARC_FreelistMeta *meta, uint64_t objects) {
+void *pfreelist_contig_alloc(struct ARC_PFreelistMeta *meta, uint64_t objects) {
 	while (meta->free_objects < objects && meta != NULL) {
 		meta = meta->next;
 	}
@@ -75,7 +74,7 @@ void *freelist_contig_alloc(struct ARC_FreelistMeta *meta, uint64_t objects) {
 		return NULL;
 	}
 
-	struct ARC_FreelistMeta to_free = { 0 };
+	struct ARC_PFreelistMeta to_free = { 0 };
 	to_free.object_size = meta->object_size;
 	to_free.base = meta->base;
 	to_free.ceil = meta->ceil;
@@ -94,7 +93,7 @@ void *freelist_contig_alloc(struct ARC_FreelistMeta *meta, uint64_t objects) {
 	void *allocation = NULL;
 
 	while (object_count < objects) {
-		allocation = freelist_alloc(meta);
+		allocation = pfreelist_alloc(meta);
 
 		if (to_free.head == NULL) {
 			// Keep track of the first allocation
@@ -107,7 +106,7 @@ void *freelist_contig_alloc(struct ARC_FreelistMeta *meta, uint64_t objects) {
 
 		if (last_allocation != NULL && abs((intptr_t)(last_allocation - allocation)) != (int64_t)meta->object_size) {
 			// Keep track of this little contiguous allocation
-			freelist_contig_free(&to_free, base, object_count + 1);
+			pfreelist_contig_free(&to_free, base, object_count + 1);
 
 			// Move onto the next base
 			base = allocation;
@@ -134,11 +133,11 @@ void *freelist_contig_alloc(struct ARC_FreelistMeta *meta, uint64_t objects) {
 	}
 
         // Free all pages to be freed
-        struct ARC_FreelistNode *current = bottom_allocation;
+        struct ARC_PFreelistNode *current = bottom_allocation;
 
 	while (current->next != bottom_allocation) {
-		struct ARC_FreelistNode *next = current->next;
-		freelist_free(meta, current);
+		struct ARC_PFreelistNode *next = current->next;
+		pfreelist_free(meta, current);
 		current = next;
 	}
 
@@ -147,7 +146,7 @@ void *freelist_contig_alloc(struct ARC_FreelistMeta *meta, uint64_t objects) {
 
 // Free given address in given list
 // Return: non-NULL = success
-void *freelist_free(struct ARC_FreelistMeta *meta, void *address) {
+void *pfreelist_free(struct ARC_PFreelistMeta *meta, void *address) {
 	if (meta == NULL || address == NULL) {
 		ARC_DEBUG(ERR, "Failed to free %p in %p\n", address, meta);
 		return NULL;
@@ -169,7 +168,7 @@ void *freelist_free(struct ARC_FreelistMeta *meta, void *address) {
 		return NULL;
 	}
 
-	struct ARC_FreelistNode *node = (struct ARC_FreelistNode *)address;
+	struct ARC_PFreelistNode *node = (struct ARC_PFreelistNode *)address;
 
 	// Mark as free
 	node->next = meta->head;
@@ -182,7 +181,7 @@ void *freelist_free(struct ARC_FreelistMeta *meta, void *address) {
 	return address;
 }
 
-void *freelist_contig_free(struct ARC_FreelistMeta *meta, void *address, uint64_t objects) {
+void *pfreelist_contig_free(struct ARC_PFreelistMeta *meta, void *address, uint64_t objects) {
 	if (meta == NULL || address == NULL) {
 		ARC_DEBUG(ERR, "Failed to free %p in %p\n", address, meta);
 		return NULL;
@@ -205,7 +204,7 @@ void *freelist_contig_free(struct ARC_FreelistMeta *meta, void *address, uint64_
 	}
 
 	for (uint64_t i = 0; i < objects; i++) {
-		struct ARC_FreelistNode *node = (struct ARC_FreelistNode *)(address + (i * meta->object_size));
+		struct ARC_PFreelistNode *node = (struct ARC_PFreelistNode *)(address + (i * meta->object_size));
 
 		// Mark as free
 		node->next = meta->head;
@@ -223,7 +222,7 @@ void *freelist_contig_free(struct ARC_FreelistMeta *meta, void *address, uint64_
 // Return: 0 = success
 // Return: -1 = object size mismatch
 // Return: -2 = either list was NULL
-int link_freelists(struct ARC_FreelistMeta *A, struct ARC_FreelistMeta *B) {
+int link_pfreelists(struct ARC_PFreelistMeta *A, struct ARC_PFreelistMeta *B) {
 	if (A == NULL || B == NULL) {
 		return -2;
 	}
@@ -236,7 +235,7 @@ int link_freelists(struct ARC_FreelistMeta *A, struct ARC_FreelistMeta *B) {
 	mutex_lock(&A->mutex);
 
 	// Advance to the last list
-	struct ARC_FreelistMeta *last = A;
+	struct ARC_PFreelistMeta *last = A;
 	while (last->next != NULL) {
 		mutex_lock(&last->next->mutex);
 		mutex_unlock(&last->mutex);
@@ -251,30 +250,30 @@ int link_freelists(struct ARC_FreelistMeta *A, struct ARC_FreelistMeta *B) {
 	return 0;
 }
 
-struct ARC_FreelistMeta *init_freelist(uint64_t _base, uint64_t _ceil, uint64_t _object_size) {
+struct ARC_PFreelistMeta *init_pfreelist(uint64_t _base, uint64_t _ceil, uint64_t _object_size) {
 	if (_base > _ceil || _object_size == 0) {
 		// Invalid parameters
 		return NULL;
 	}
 
-	if (_ceil - _base < _object_size + sizeof(struct ARC_FreelistMeta)) {
+	if (_ceil - _base < _object_size + sizeof(struct ARC_PFreelistMeta)) {
 		// There is not enough space for one object
 		return NULL;
 	}
 
-	struct ARC_FreelistMeta *meta = (struct ARC_FreelistMeta *)_base;
+	struct ARC_PFreelistMeta *meta = (struct ARC_PFreelistMeta *)_base;
 
-	memset(meta, 0, sizeof(struct ARC_FreelistMeta));
+	memset(meta, 0, sizeof(struct ARC_PFreelistMeta));
 
 	init_static_mutex(&meta->mutex);
 
 	// Number of objects to accomodate meta
-	int objects = (sizeof(struct ARC_FreelistMeta) / _object_size) + 1;
+	int objects = (sizeof(struct ARC_PFreelistMeta) / _object_size) + 1;
 	_base += objects * _object_size;
 	_ceil -= _object_size;
 
-	struct ARC_FreelistNode *base = (struct ARC_FreelistNode *)_base;
-	struct ARC_FreelistNode *ceil = (struct ARC_FreelistNode *)_ceil;
+	struct ARC_PFreelistNode *base = (struct ARC_PFreelistNode *)_base;
+	struct ARC_PFreelistNode *ceil = (struct ARC_PFreelistNode *)_ceil;
 
 	// Store meta information
 	meta->base = base;
@@ -283,12 +282,12 @@ struct ARC_FreelistMeta *init_freelist(uint64_t _base, uint64_t _ceil, uint64_t 
 	meta->object_size = _object_size;
 	meta->free_objects = (_ceil - _base) / _object_size - objects + 1;
 
-	ARC_DEBUG(INFO, "Creating freelist from 0x%"PRIx64" (%p) to 0x%"PRIx64" (%p) with objects of %lu bytes\n", (uint64_t)_base, base, (uint64_t)_ceil, ceil, _object_size);
+	ARC_DEBUG(INFO, "Creating pfreelist from 0x%"PRIx64" (%p) to 0x%"PRIx64" (%p) with objects of %lu bytes\n", (uint64_t)_base, base, (uint64_t)_ceil, ceil, _object_size);
 
 	// Initialize the linked list
-	struct ARC_FreelistNode *current = NULL;
+	struct ARC_PFreelistNode *current = NULL;
 	for (; _base < _ceil; _base += _object_size) {
-		current = (struct ARC_FreelistNode *)_base;
+		current = (struct ARC_PFreelistNode *)_base;
 		*(uint64_t *)current = _base + _object_size;
 	}
 

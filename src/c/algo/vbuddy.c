@@ -25,22 +25,22 @@
  * @DESCRIPTION
 */
 
-#include <mm/algo/buddy.h>
+#include <mm/algo/vbuddy.h>
 #include <mm/algo/allocator.h>
 #include <mm/pmm.h>
 #include <global.h>
 #include <stdbool.h>
 #include <lib/util.h>
 
-struct buddy_node {
-	struct buddy_node *next;
+struct vbuddy_node {
+	struct vbuddy_node *next;
 	void *base;
 	size_t size;
 	uint32_t attributes; // Bit | Description
 			     // 0   | 1: Allocated, 0: Free
 };
 
-static int split(struct ARC_BuddyMeta *meta, struct buddy_node *node) {
+static int split(struct ARC_VBuddyMeta *meta, struct vbuddy_node *node) {
 	if (node == NULL || (node->attributes & 1) == 1) {
 		return -1;
 	}
@@ -51,7 +51,7 @@ static int split(struct ARC_BuddyMeta *meta, struct buddy_node *node) {
 
 	size_t new_size = node->size >> 1;
 
-	struct buddy_node *buddy = ialloc(sizeof(*buddy));
+	struct vbuddy_node *buddy = ialloc(sizeof(*buddy));
 
 	if (buddy == NULL) {
 		return -3;
@@ -69,7 +69,7 @@ static int split(struct ARC_BuddyMeta *meta, struct buddy_node *node) {
 	return 0;
 }
 
-static int merge(struct buddy_node *base) {
+static int merge(struct vbuddy_node *base) {
 	if (base == NULL || (base->attributes & 1) == 1) {
 		return -1;
 	}
@@ -86,7 +86,7 @@ static int merge(struct buddy_node *base) {
 	return 0;
 }
 
-void *buddy_alloc(struct ARC_BuddyMeta *meta, size_t size) {
+void *vbuddy_alloc(struct ARC_VBuddyMeta *meta, size_t size) {
 	if (meta == NULL || size == 0 || meta->tree == NULL) {
 		ARC_DEBUG(ERR, "Invalid parameters\n");
 		return NULL;
@@ -97,7 +97,7 @@ void *buddy_alloc(struct ARC_BuddyMeta *meta, size_t size) {
 		return NULL;
 	}
 
-	struct buddy_node *current = meta->tree;
+	struct vbuddy_node *current = meta->tree;
 
 	// Align the size up
 	SIZE_T_NEXT_POW2(size);
@@ -137,12 +137,12 @@ void *buddy_alloc(struct ARC_BuddyMeta *meta, size_t size) {
         return current->base;
 }
 
-size_t buddy_free(struct ARC_BuddyMeta *meta, void *address) {
+size_t vbuddy_free(struct ARC_VBuddyMeta *meta, void *address) {
 	if (meta == NULL || meta->tree == NULL) {
 		return 0;
 	}
 
-	struct buddy_node *current = meta->tree;
+	struct vbuddy_node *current = meta->tree;
 
 	while (current != NULL && current->base != address) {
 		current = current->next;
@@ -161,8 +161,8 @@ size_t buddy_free(struct ARC_BuddyMeta *meta, void *address) {
         return ret;
 }
 
-int init_buddy(struct ARC_BuddyMeta *meta, void *base, size_t size, size_t smallest_object) {
-        ARC_DEBUG(INFO, "Initializing new buddy allocator (%lu bytes, lowest %lu bytes) at %p\n", size, smallest_object, base);
+int init_vbuddy(struct ARC_VBuddyMeta *meta, void *base, size_t size, size_t smallest_object) {
+        ARC_DEBUG(INFO, "Initializing new vbuddy allocator (%lu bytes, lowest %lu bytes) at %p\n", size, smallest_object, base);
 
 	meta->base = base;
 	meta->ceil = base + size;
@@ -170,7 +170,7 @@ int init_buddy(struct ARC_BuddyMeta *meta, void *base, size_t size, size_t small
 
 	init_static_mutex(&meta->mutex);
 
-	struct buddy_node *head = (struct buddy_node *)ialloc(sizeof(*head));
+	struct vbuddy_node *head = (struct vbuddy_node *)ialloc(sizeof(*head));
 
 	if (head == NULL) {
 		return -1;

@@ -25,14 +25,14 @@
  * @DESCRIPTION
 */
 #include <mm/vmm.h>
-#include <mm/algo/buddy.h>
+#include <mm/algo/vbuddy.h>
 #include <arch/pager.h>
 #include <lib/util.h>
 
-static struct ARC_BuddyMeta vmm_meta = { 0 };
+static struct ARC_VBuddyMeta vmm_meta = { 0 };
 
 void *vmm_alloc(size_t size) {
-	void *virtual = buddy_alloc(&vmm_meta, size);
+	void *virtual = vbuddy_alloc(&vmm_meta, size);
 
 	if (virtual == NULL) {
 		ARC_DEBUG(ERR, "Failed to allocate\n");
@@ -41,7 +41,7 @@ void *vmm_alloc(size_t size) {
 
 	if (pager_fly_map(NULL, (uintptr_t)virtual, size, 1 << ARC_PAGER_RW) != 0) {
 		ARC_DEBUG(ERR, "Failed to fly map %p (%lu B)\n", virtual, size);
-		buddy_free(&vmm_meta, virtual);
+		vbuddy_free(&vmm_meta, virtual);
 		return NULL;
 	}
 
@@ -49,7 +49,7 @@ void *vmm_alloc(size_t size) {
 }
 
 void *vmm_free(void *address) {
-	size_t freed = buddy_free(&vmm_meta, address);
+	size_t freed = vbuddy_free(&vmm_meta, address);
 
 	if (freed == 0) {
 		return NULL;
@@ -67,13 +67,13 @@ void *vmm_alloc_nopage(size_t size) {
 		size = PAGE_SIZE;
 	}
 
-	return buddy_alloc(&vmm_meta, size);
+	return vbuddy_alloc(&vmm_meta, size);
 }
 
 size_t vmm_free_nopage(void *address) {
-	return buddy_free(&vmm_meta, address);
+	return vbuddy_free(&vmm_meta, address);
 }
 
 int init_vmm(void *addr, size_t size) {
-	return init_buddy(&vmm_meta, addr, size, PAGE_SIZE);
+	return init_vbuddy(&vmm_meta, addr, size, PAGE_SIZE);
 }

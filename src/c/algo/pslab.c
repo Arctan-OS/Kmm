@@ -1,5 +1,5 @@
 /**
- * @file slab.c
+ * @file pslab.c
  * @author awewsomegamer <awewsomegamer@gmail.com>
  *
  * @LICENSE
@@ -23,13 +23,13 @@
  *
  * @DESCRIPTION
 */
-#include <mm/algo/slab.h>
-#include <mm/algo/freelist.h>
+#include <mm/algo/pslab.h>
+#include <mm/algo/pfreelist.h>
 #include <mm/pmm.h>
 #include <global.h>
 #include <lib/util.h>
 
-void *slab_alloc(struct ARC_SlabMeta *meta, size_t size) {
+void *pslab_alloc(struct ARC_PSlabMeta *meta, size_t size) {
 	if (size > meta->list_sizes[7]) {
 		// Just allocate a contiguous set of pages
 		ARC_DEBUG(ERR, "Failed to allocate size %lu\n", size);
@@ -38,21 +38,21 @@ void *slab_alloc(struct ARC_SlabMeta *meta, size_t size) {
 
 	for (int i = 0; i < 8; i++) {
 		if (size <= meta->list_sizes[i]) {
-			return freelist_alloc(meta->lists[i]);
+			return pfreelist_alloc(meta->lists[i]);
 		}
 	}
 
 	return NULL;
 }
 
-void *slab_free(struct ARC_SlabMeta *meta, void *address) {
+void *pslab_free(struct ARC_PSlabMeta *meta, void *address) {
 	for (int i = 0; i < 8; i++) {
 		void *base = meta->lists[i]->base;
 		void *ceil = meta->lists[i]->ceil;
 
 		if (base <= address && address <= ceil) {
 			memset(address, 0, meta->list_sizes[i]);
-			return freelist_free(meta->lists[i], address);
+			return pfreelist_free(meta->lists[i], address);
 		}
 	}
 
@@ -63,55 +63,55 @@ void *slab_free(struct ARC_SlabMeta *meta, void *address) {
 	return NULL;
 }
 
-int slab_expand(struct ARC_SlabMeta *slab, int list, size_t pages) {
-	if (slab == NULL || list < 0 || list > 7 || pages == 0) {
+int pslab_expand(struct ARC_PSlabMeta *pslab, int list, size_t pages) {
+	if (pslab == NULL || list < 0 || list > 7 || pages == 0) {
 		return -1;
 	}
 
 	uint64_t base = (uint64_t)pmm_contig_alloc(pages);
-	struct ARC_FreelistMeta *meta = init_freelist(base, base + (pages * PAGE_SIZE), slab->list_sizes[list]);
+	struct ARC_PFreelistMeta *meta = init_pfreelist(base, base + (pages * PAGE_SIZE), pslab->list_sizes[list]);
 
-	ARC_DEBUG(INFO, "Expanding SLAB %p (%d) by %lu pages\n", slab, list, pages);
+	ARC_DEBUG(INFO, "Expanding SLAB %p (%d) by %lu pages\n", pslab, list, pages);
 
-	return link_freelists(slab->lists[list], meta);
+	return link_pfreelists(pslab->lists[list], meta);
 }
 
-void *init_slab(struct ARC_SlabMeta *meta, void *range, size_t range_size, uint32_t attributes) {
+void *init_pslab(struct ARC_PSlabMeta *meta, void *range, size_t range_size, uint32_t attributes) {
 	ARC_DEBUG(INFO, "Initializing SLAB allocator in range %p (%lu)\n", range, range_size);
 
 	size_t partition_size = range_size >> 3;
 	size_t object_size = 16;
 	uint64_t base = (uint64_t)range;
 
-	meta->lists[0] = init_freelist(base, base + partition_size, object_size);
+	meta->lists[0] = init_pfreelist(base, base + partition_size, object_size);
 	meta->list_sizes[0] = object_size;
 	object_size <<= 1;
 	base += partition_size;
-	meta->lists[1] = init_freelist(base, base + partition_size, object_size);
+	meta->lists[1] = init_pfreelist(base, base + partition_size, object_size);
 	meta->list_sizes[1] = object_size;
 	object_size <<= 1;
 	base += partition_size;
-	meta->lists[2] = init_freelist(base, base + partition_size, object_size);
+	meta->lists[2] = init_pfreelist(base, base + partition_size, object_size);
 	meta->list_sizes[2] = object_size;
 	object_size <<= 1;
 	base += partition_size;
-	meta->lists[3] = init_freelist(base, base + partition_size, object_size);
+	meta->lists[3] = init_pfreelist(base, base + partition_size, object_size);
 	meta->list_sizes[3] = object_size;
 	object_size <<= 1;
 	base += partition_size;
-	meta->lists[4] = init_freelist(base, base + partition_size, object_size);
+	meta->lists[4] = init_pfreelist(base, base + partition_size, object_size);
 	meta->list_sizes[4] = object_size;
 	object_size <<= 1;
 	base += partition_size;
-	meta->lists[5] = init_freelist(base, base + partition_size, object_size);
+	meta->lists[5] = init_pfreelist(base, base + partition_size, object_size);
 	meta->list_sizes[5] = object_size;
 	object_size <<= 1;
 	base += partition_size;
-	meta->lists[6] = init_freelist(base, base + partition_size, object_size);
+	meta->lists[6] = init_pfreelist(base, base + partition_size, object_size);
 	meta->list_sizes[6] = object_size;
 	object_size <<= 1;
 	base += partition_size;
-	meta->lists[7] = init_freelist(base, base + partition_size, object_size);
+	meta->lists[7] = init_pfreelist(base, base + partition_size, object_size);
 	meta->list_sizes[7] = object_size;
 	object_size <<= 1;
 	base += partition_size;

@@ -27,22 +27,22 @@
  * algorithms.
 */
 #include <mm/algo/allocator.h>
-#include <mm/algo/slab.h>
+#include <mm/algo/pslab.h>
 #include <mm/pmm.h>
 #include <global.h>
 
-static struct ARC_SlabMeta meta = { 0 };
+static struct ARC_PSlabMeta meta = { 0 };
 
 void *ialloc(size_t size) {
-	return slab_alloc(&meta, size);
+	return pslab_alloc(&meta, size);
 }
 
 void *icalloc(size_t size, size_t count) {
-	return slab_alloc(&meta, size * count);
+	return pslab_alloc(&meta, size * count);
 }
 
 void *ifree(void *address) {
-	return slab_free(&meta, address);
+	return pslab_free(&meta, address);
 }
 
 void *irealloc(void *address, size_t size) {
@@ -55,14 +55,14 @@ void *irealloc(void *address, size_t size) {
 }
 
 int iallocator_expand(size_t pages) {
-	int cumulative_err = (slab_expand(&meta, 0, pages) == 0);
-	cumulative_err += (slab_expand(&meta, 1, pages) == 0);
-	cumulative_err += (slab_expand(&meta, 2, pages) == 0);
-	cumulative_err += (slab_expand(&meta, 3, pages) == 0);
-	cumulative_err += (slab_expand(&meta, 4, pages) == 0);
-	cumulative_err += (slab_expand(&meta, 5, pages) == 0);
-	cumulative_err += (slab_expand(&meta, 6, pages) == 0);
-	cumulative_err += (slab_expand(&meta, 7, pages) == 0);
+	int cumulative_err = (pslab_expand(&meta, 0, pages) == 0);
+	cumulative_err += (pslab_expand(&meta, 1, pages) == 0);
+	cumulative_err += (pslab_expand(&meta, 2, pages) == 0);
+	cumulative_err += (pslab_expand(&meta, 3, pages) == 0);
+	cumulative_err += (pslab_expand(&meta, 4, pages) == 0);
+	cumulative_err += (pslab_expand(&meta, 5, pages) == 0);
+	cumulative_err += (pslab_expand(&meta, 6, pages) == 0);
+	cumulative_err += (pslab_expand(&meta, 7, pages) == 0);
 
 	return cumulative_err;
 }
@@ -71,5 +71,5 @@ int init_iallocator(size_t pages) {
 	size_t range_length = (pages << 12) * 8;
 	void *range = (void *)pmm_contig_alloc(pages * 8);
 
-	return init_slab(&meta, range, range_length, 0) != range + range_length;
+	return init_pslab(&meta, range, range_length, 0) != range + range_length;
 }

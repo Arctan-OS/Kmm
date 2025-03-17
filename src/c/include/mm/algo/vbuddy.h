@@ -24,14 +24,14 @@
  *
  * @DESCRIPTION
 */
-#ifndef ARC_MM_ALGO_BUDDY_H
-#define ARC_MM_ALGO_BUDDY_H
+#ifndef ARC_MM_ALGO_VBUDDY_H
+#define ARC_MM_ALGO_VBUDDY_H
 
 #include <stddef.h>
 #include <lib/atomics.h>
-#include <mm/algo/freelist.h>
+#include <mm/algo/pfreelist.h>
 
-struct ARC_BuddyMeta {
+struct ARC_VBuddyMeta {
 	/// Base of the allocator.
 	void *base;
 	/// Ceiling of the allocator.
@@ -44,18 +44,18 @@ struct ARC_BuddyMeta {
 	ARC_GenericMutex mutex;
 };
 
-void *buddy_alloc(struct ARC_BuddyMeta *meta, size_t size);
-size_t buddy_free(struct ARC_BuddyMeta *meta, void *address);
+void *vbuddy_alloc(struct ARC_VBuddyMeta *meta, size_t size);
+size_t vbuddy_free(struct ARC_VBuddyMeta *meta, void *address);
 
 /**
  * Create a buddy allocator
  *
- * @param struct ARC_BuddyMeta *meta - Meta of the allocator.
+ * @param struct ARC_VBuddyMeta *meta - Meta of the allocator.
  * @param void *base - First allocatable address.
  * @param size_t size - Size of the first allocatable region (ensure this is aligned to the nearest power of 2).
  * @param size_t smallest_object - Size of the smallest allocatable object (ensure this is aligned to the nearest power of 2).
  * @return zero upon success.
  *  */
-int init_buddy(struct ARC_BuddyMeta *meta, void *base, size_t size, size_t smallest_object);
+int init_vbuddy(struct ARC_VBuddyMeta *meta, void *base, size_t size, size_t smallest_object);
 
 #endif

@@ -1,5 +1,5 @@
 /**
- * @file freelist.h
+ * @file pfreelist.h
  *
  * @author awewsomegamer <awewsomegamer@gmail.com>
  *
@@ -23,7 +23,7 @@
  * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
  *
  * @DESCRIPTION
- * Abstract freelist implementation.
+ * Abstract pfreelist implementation.
 */
 #ifndef ARC_MM_ALGO_FREELIST_H
 #define ARC_MM_ALGO_FREELIST_H
@@ -31,22 +31,22 @@
 #include <stdint.h>
 #include <lib/atomics.h>
 
-struct ARC_FreelistNode {
-	struct ARC_FreelistNode *next __attribute__((aligned(8)));
+struct ARC_PFreelistNode {
+	struct ARC_PFreelistNode *next __attribute__((aligned(8)));
 };
 
 // BUG: I foresee a bug here. If an allocation is directly after
 //      this header, then it is possible for this object to be overwritten
 //      and screwed with, intentionally or unintentionally
-struct ARC_FreelistMeta {
+struct ARC_PFreelistMeta {
 	/// Current free node.
-	struct ARC_FreelistNode *head __attribute__((aligned(8)));
+	struct ARC_PFreelistNode *head __attribute__((aligned(8)));
 	/// First node.
-	struct ARC_FreelistNode *base __attribute__((aligned(8)));
+	struct ARC_PFreelistNode *base __attribute__((aligned(8)));
 	/// Last node.
-	struct ARC_FreelistNode *ceil __attribute__((aligned(8)));
+	struct ARC_PFreelistNode *ceil __attribute__((aligned(8)));
 	/// Next joined list.
-	struct ARC_FreelistMeta *next __attribute__((aligned(8)));
+	struct ARC_PFreelistMeta *next __attribute__((aligned(8)));
 	/// Size of each node in bytes.
 	uint64_t object_size __attribute__((aligned(8)));
 	/// Number of free objects in this meta.
@@ -58,37 +58,37 @@ struct ARC_FreelistMeta {
 /**
  * Allocate a single object in the given meta.
  *
- * @param struct ARC_FreelistMeta *meta - The list from which to allocate one object
+ * @param struct ARC_PFreelistMeta *meta - The list from which to allocate one object
  * @return A void * to the base of the newly allocated object.
  * */
-void *freelist_alloc(struct ARC_FreelistMeta *meta);
+void *pfreelist_alloc(struct ARC_PFreelistMeta *meta);
 
 /**
  * Allocate a contiguous section of memory.
  *
- * @param struct ARC_FreelistMeta *meta - The list in which to allocate the contiguous region of memory.
+ * @param struct ARC_PFreelistMeta *meta - The list in which to allocate the contiguous region of memory.
  * @param uint64_t objects - Number of contiguous objects to allocate.
  * @return The base address of the contiguous section.
  * */
-void *freelist_contig_alloc(struct ARC_FreelistMeta *meta, uint64_t objects);
+void *pfreelist_contig_alloc(struct ARC_PFreelistMeta *meta, uint64_t objects);
 
 /**
  * Free the object at the given address in the given meta.
  *
- * @param struct ARC_FreelistMeta *meta - The freelist in which to free the address
+ * @param struct ARC_PFreelistMeta *meta - The pfreelist in which to free the address
  * @param void *address - A pointer to the base of the given object to be freed.
  * @return /a address when successfull.
  * */
-void *freelist_free(struct ARC_FreelistMeta *meta, void *address);
+void *pfreelist_free(struct ARC_PFreelistMeta *meta, void *address);
 
 /**
  * Free a contiguous section of memory.
  *
- * @param struct ARC_FreelistMeta *meta - The list in which to free the contiguous region of memory.
+ * @param struct ARC_PFreelistMeta *meta - The list in which to free the contiguous region of memory.
  * @param void *address - The base address of the contiguous section.
  * @param uint64_t objects - The number of objects the section consists of.
  * @return The base address if the free was successful. */
-void *freelist_contig_free(struct ARC_FreelistMeta *meta, void *address, uint64_t objects);
+void *pfreelist_contig_free(struct ARC_PFreelistMeta *meta, void *address, uint64_t objects);
 
 /**
  * Combine list A and list B.
@@ -97,16 +97,16 @@ void *freelist_contig_free(struct ARC_FreelistMeta *meta, void *address, uint64_
  * When a -1 is returned, the object size of A and B don't match.\n
  * When a -2 is returned, either list is NULL.\n
  * */
-int link_freelists(struct ARC_FreelistMeta *A, struct ARC_FreelistMeta *B);
+int link_pfreelists(struct ARC_PFreelistMeta *A, struct ARC_PFreelistMeta *B);
 
 /**
- * Initialize the given memory as a freelist.
+ * Initialize the given memory as a pfreelist.
  *
  * @param uint64_t _base - The lowest address within the list.
  * @param uint64_t _ceil - The highest address within the list + object_size.
  * @param uint64_t _object_size - The size of each object in bytes.
- * @return returns the pointer to the freelist meta (_base == return value).
+ * @return returns the pointer to the pfreelist meta (_base == return value).
  * */
-struct ARC_FreelistMeta *init_freelist(uint64_t _base, uint64_t _ceil, uint64_t _object_size);
+struct ARC_PFreelistMeta *init_pfreelist(uint64_t _base, uint64_t _ceil, uint64_t _object_size);
 
 #endif
