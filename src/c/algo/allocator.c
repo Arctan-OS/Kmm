@@ -69,7 +69,11 @@ int iallocator_expand(size_t pages) {
 
 int init_iallocator(size_t pages) {
 	size_t range_length = (pages << 12) * 8;
-	void *range = (void *)pmm_contig_alloc(pages * 8);
+	void *range = (void *)pmm_alloc_pages(pages * 8);
+
+	if (range == NULL) {
+		return -1;
+	}
 
 	return init_pslab(&meta, range, range_length, 0) != range + range_length;
 }

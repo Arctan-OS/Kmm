@@ -110,17 +110,13 @@ void *vbuddy_alloc(struct ARC_VBuddyMeta *meta, size_t size) {
 
 		if (size > current->size) {
 			goto cycle_end;
-		}
-
-		if (current->size > size) {
+		} else {
 			while (current->size != size) {
 				if (split(meta, current) != 0) {
 					break;
 				}
 			}
-		}
 
-		if (current->size == size) {
 			break;
 		}
 

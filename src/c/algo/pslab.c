@@ -68,7 +68,7 @@ int pslab_expand(struct ARC_PSlabMeta *pslab, int list, size_t pages) {
 		return -1;
 	}
 
-	uint64_t base = (uint64_t)pmm_contig_alloc(pages);
+	uint64_t base = (uint64_t)pmm_alloc(pages * PAGE_SIZE);
 	struct ARC_PFreelistMeta *meta = init_pfreelist(base, base + (pages * PAGE_SIZE), pslab->list_sizes[list]);
 
 	ARC_DEBUG(INFO, "Expanding SLAB %p (%d) by %lu pages\n", pslab, list, pages);
