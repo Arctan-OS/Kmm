@@ -124,6 +124,9 @@ int init_pmm_contig() {
 			ARC_DEBUG(ERR, "\tFailed to allocate region for bank\n");
 			return -2;
 		}
+		
+		element->meta->ialloc = ialloc;
+		element->meta->ifree = ifree;
 
 		if (init_vbuddy(element->meta, base, size, PAGE_SIZE) != 0) {
 			ARC_DEBUG(ERR, "\tFailed to initialize bank\n");

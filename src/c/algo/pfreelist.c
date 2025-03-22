@@ -35,16 +35,8 @@
 
 // Allocate one object in given list
 // Return: non-NULL = success
-void *pfreelist_alloc(struct ARC_PFreelistMeta *meta) {
-	mutex_lock(&meta->mutex);
-
+void *pfreelist_alloc(struct ARC_PFreelistMeta *meta) {	
 	while (meta != NULL && meta->free_objects < 1) {
-		if (meta->next != NULL) {
-			mutex_lock(&meta->next->mutex);
-		}
-
-
-		mutex_unlock(&meta->mutex);
 		meta = meta->next;
 	}
 
@@ -54,14 +46,12 @@ void *pfreelist_alloc(struct ARC_PFreelistMeta *meta) {
 	}
 
 	// Get address, mark as used
-	void *address = (void *)meta->head;
-	meta->head = meta->head->next;
+	struct ARC_PFreelistNode *node = NULL;
 
-	meta->free_objects--;
+	ARC_ATOMIC_DEC(meta->free_objects);
+	ARC_ATOMIC_XCHG(&meta->head, &meta->head->next, &node);
 
-	mutex_unlock(&meta->mutex);
-
-	return address;
+	return (void *)node;
 }
 
 void *pfreelist_contig_alloc(struct ARC_PFreelistMeta *meta, uint64_t objects) {
@@ -152,14 +142,7 @@ void *pfreelist_free(struct ARC_PFreelistMeta *meta, void *address) {
 		return NULL;
 	}
 
-	mutex_lock(&meta->mutex);
-
 	while (meta != NULL && !ADDRESS_IN_META(address, meta)) {
-		if (meta->next != NULL) {
-			mutex_lock(&meta->next->mutex);
-		}
-
-		mutex_unlock(&meta->mutex);
 		meta = meta->next;
 	}
 
@@ -172,11 +155,10 @@ void *pfreelist_free(struct ARC_PFreelistMeta *meta, void *address) {
 
 	// Mark as free
 	node->next = meta->head;
-	meta->head = node;
-
-	meta->free_objects++;
-
-	mutex_unlock(&meta->mutex);
+	
+	struct ARC_PFreelistNode *ret = NULL;
+	ARC_ATOMIC_XCHG(&meta->head, &node, &ret);
+	ARC_ATOMIC_INC(meta->free_objects);
 
 	return address;
 }

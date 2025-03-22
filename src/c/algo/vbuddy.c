@@ -51,7 +51,7 @@ static int split(struct ARC_VBuddyMeta *meta, struct vbuddy_node *node) {
 
 	size_t new_size = node->size >> 1;
 
-	struct vbuddy_node *buddy = ialloc(sizeof(*buddy));
+	struct vbuddy_node *buddy = meta->ialloc(sizeof(*buddy));
 
 	if (buddy == NULL) {
 		return -3;
@@ -69,7 +69,7 @@ static int split(struct ARC_VBuddyMeta *meta, struct vbuddy_node *node) {
 	return 0;
 }
 
-static int merge(struct vbuddy_node *base) {
+static int merge(struct ARC_VBuddyMeta *meta, struct vbuddy_node *base) {
 	if (base == NULL || (base->attributes & 1) == 1) {
 		return -1;
 	}
@@ -81,7 +81,7 @@ static int merge(struct vbuddy_node *base) {
 	base->size <<= 1;
 	void *tmp = base->next;
 	base->next = base->next->next;
-	ifree(tmp);
+	meta->ifree(tmp);
 
 	return 0;
 }
@@ -152,12 +152,17 @@ size_t vbuddy_free(struct ARC_VBuddyMeta *meta, void *address) {
 
 	size_t ret = current->size;
 
-	merge(current);
+	merge(meta, current);
 
         return ret;
 }
 
 int init_vbuddy(struct ARC_VBuddyMeta *meta, void *base, size_t size, size_t smallest_object) {
+	if (meta->ialloc == NULL || meta->ifree == NULL) {
+		ARC_DEBUG(ERR, "Internal allocation and freeing functions not provided\n");
+		return -1;
+	}
+
         ARC_DEBUG(INFO, "Initializing new vbuddy allocator (%lu bytes, lowest %lu bytes) at %p\n", size, smallest_object, base);
 
 	meta->base = base;
@@ -169,7 +174,7 @@ int init_vbuddy(struct ARC_VBuddyMeta *meta, void *base, size_t size, size_t sma
 	struct vbuddy_node *head = (struct vbuddy_node *)ialloc(sizeof(*head));
 
 	if (head == NULL) {
-		return -1;
+		return -2;
 	}
 
 	memset(head, 0, sizeof(*head));
