@@ -52,7 +52,7 @@ struct ARC_PFreelistMeta {
 	/// Number of free objects in this meta.
 	uint64_t free_objects __attribute__((aligned(8)));
 	/// Lock for everything.
-	ARC_GenericMutex mutex;
+	ARC_GenericSpinlock lock;
 }__attribute__((packed));
 
 /**

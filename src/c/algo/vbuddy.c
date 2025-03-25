@@ -25,6 +25,7 @@
  * @DESCRIPTION
 */
 
+#include "lib/atomics.h"
 #include <mm/algo/vbuddy.h>
 #include <mm/algo/allocator.h>
 #include <mm/pmm.h>
@@ -41,46 +42,47 @@ struct vbuddy_node {
 };
 
 static int split(struct ARC_VBuddyMeta *meta, struct vbuddy_node *node) {
-	if (node == NULL || (node->attributes & 1) == 1) {
+	ARC_ATOMIC_MFENCE;
+	if (node == NULL || (node->attributes & 1) == 1 || node->size == meta->smallest_object) {
 		return -1;
 	}
 
-	if (node->size == meta->smallest_object) {
-		return -2;
-	}
-
-	size_t new_size = node->size >> 1;
+	node->size >>= 1;
+	ARC_ATOMIC_SFENCE;
 
 	struct vbuddy_node *buddy = meta->ialloc(sizeof(*buddy));
 
 	if (buddy == NULL) {
-		return -3;
+		node->size <<= 1;
+		return -2;
 	}
-
-	memset(buddy, 0, sizeof(*buddy));
-
-	buddy->size = new_size;
-	buddy->base = node->base + new_size;
+	
+	buddy->size = node->size;
+	buddy->base = node->base + node->size;
 	buddy->next = node->next;
-
+	buddy->attributes = 0;
 	node->next = buddy;
-	node->size = new_size;
+
+	ARC_ATOMIC_SFENCE;
 
 	return 0;
 }
 
 static int merge(struct ARC_VBuddyMeta *meta, struct vbuddy_node *base) {
-	if (base == NULL || (base->attributes & 1) == 1) {
+	ARC_ATOMIC_MFENCE;
+	if (base == NULL || (base->attributes & 1) == 1 ||
+	    base->next == NULL || (base->next->attributes & 1) == 1 
+	    || base->size != base->next->size) {
 		return -1;
 	}
 
-	if (base->next == NULL || (base->next->attributes & 1) == 1 || base->size != base->next->size) {
-		return -2;
-	}
-
 	base->size <<= 1;
+	ARC_ATOMIC_SFENCE;
 	void *tmp = base->next;
 	base->next = base->next->next;
+
+	ARC_ATOMIC_SFENCE;
+	
 	meta->ifree(tmp);
 
 	return 0;
@@ -130,6 +132,8 @@ void *vbuddy_alloc(struct ARC_VBuddyMeta *meta, size_t size) {
 
 	current->attributes |= 1;
 
+	ARC_ATOMIC_SFENCE;
+
         return current->base;
 }
 
@@ -144,13 +148,14 @@ size_t vbuddy_free(struct ARC_VBuddyMeta *meta, void *address) {
 		current = current->next;
 	}
 
+	size_t ret = 0;
+
 	if (current == NULL || (current->attributes & 1) == 0) {
-		return 0;
+		return ret;
 	}
 
+	ret = current->size;
 	current->attributes &= ~1;
-
-	size_t ret = current->size;
 
 	merge(meta, current);
 
@@ -169,7 +174,7 @@ int init_vbuddy(struct ARC_VBuddyMeta *meta, void *base, size_t size, size_t sma
 	meta->ceil = base + size;
 	meta->smallest_object = smallest_object;
 
-	init_static_mutex(&meta->mutex);
+	init_static_spinlock(&meta->lock);
 
 	struct vbuddy_node *head = (struct vbuddy_node *)ialloc(sizeof(*head));
 

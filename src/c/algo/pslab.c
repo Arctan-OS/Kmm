@@ -29,6 +29,8 @@
 #include <global.h>
 #include <lib/util.h>
 
+#define SMALLEST_SIZE 16 // bytes
+
 void *pslab_alloc(struct ARC_PSlabMeta *meta, size_t size) {
 	if (size > meta->list_sizes[7]) {
 		// Just allocate a contiguous set of pages
@@ -56,69 +58,44 @@ void *pslab_free(struct ARC_PSlabMeta *meta, void *address) {
 		}
 	}
 
-	if ((meta->attributes & 1) == 0) {
-		ARC_DEBUG(ERR, "Failed to free %p\n", address);
-	}
-
 	return NULL;
 }
 
-int pslab_expand(struct ARC_PSlabMeta *pslab, int list, size_t pages) {
-	if (pslab == NULL || list < 0 || list > 7 || pages == 0) {
+int pslab_expand(struct ARC_PSlabMeta *pslab, size_t pages) {
+	if (pslab == NULL || pages == 0) {
 		return -1;
 	}
 
-	uint64_t base = (uint64_t)pmm_alloc(pages * PAGE_SIZE);
-	struct ARC_PFreelistMeta *meta = init_pfreelist(base, base + (pages * PAGE_SIZE), pslab->list_sizes[list]);
+	int err = 0;
 
-	ARC_DEBUG(INFO, "Expanding SLAB %p (%d) by %lu pages\n", pslab, list, pages);
+	for (int list = 0; list < 8; list++) {
+		uint64_t base = (uint64_t)pmm_alloc((pages >> 3) * PAGE_SIZE);
+		struct ARC_PFreelistMeta *meta = init_pfreelist(base, base + (pages * PAGE_SIZE), pslab->list_sizes[list]);
+	
+		ARC_DEBUG(INFO, "Expanding SLAB %p (%d) by %lu pages\n", pslab, list, pages);
+		
+		err += link_pfreelists(pslab->lists[list], meta);
+	}
 
-	return link_pfreelists(pslab->lists[list], meta);
+	return err;
 }
 
-void *init_pslab(struct ARC_PSlabMeta *meta, void *range, size_t range_size, uint32_t attributes) {
+void *init_pslab(struct ARC_PSlabMeta *meta, void *range, size_t range_size) {
 	ARC_DEBUG(INFO, "Initializing SLAB allocator in range %p (%lu)\n", range, range_size);
 
 	size_t partition_size = range_size >> 3;
-	size_t object_size = 16;
+	size_t object_size = SMALLEST_SIZE;
 	uint64_t base = (uint64_t)range;
 
-	meta->lists[0] = init_pfreelist(base, base + partition_size, object_size);
-	meta->list_sizes[0] = object_size;
-	object_size <<= 1;
-	base += partition_size;
-	meta->lists[1] = init_pfreelist(base, base + partition_size, object_size);
-	meta->list_sizes[1] = object_size;
-	object_size <<= 1;
-	base += partition_size;
-	meta->lists[2] = init_pfreelist(base, base + partition_size, object_size);
-	meta->list_sizes[2] = object_size;
-	object_size <<= 1;
-	base += partition_size;
-	meta->lists[3] = init_pfreelist(base, base + partition_size, object_size);
-	meta->list_sizes[3] = object_size;
-	object_size <<= 1;
-	base += partition_size;
-	meta->lists[4] = init_pfreelist(base, base + partition_size, object_size);
-	meta->list_sizes[4] = object_size;
-	object_size <<= 1;
-	base += partition_size;
-	meta->lists[5] = init_pfreelist(base, base + partition_size, object_size);
-	meta->list_sizes[5] = object_size;
-	object_size <<= 1;
-	base += partition_size;
-	meta->lists[6] = init_pfreelist(base, base + partition_size, object_size);
-	meta->list_sizes[6] = object_size;
-	object_size <<= 1;
-	base += partition_size;
-	meta->lists[7] = init_pfreelist(base, base + partition_size, object_size);
-	meta->list_sizes[7] = object_size;
-	object_size <<= 1;
-	base += partition_size;
+	for (int i = 0; i < 8; i++) {
+		meta->lists[i] = init_pfreelist(base, base + partition_size, object_size);
+		meta->list_sizes[i] = object_size;
+		object_size <<= 1;
+		base += partition_size;
+	}
 
 	meta->range = range;
 	meta->range_length = range_size;
-	meta->attributes = attributes;
 
 	ARC_DEBUG(INFO, "Initialized SLAB allocator\n");
 

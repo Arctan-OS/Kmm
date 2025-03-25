@@ -45,7 +45,7 @@ struct ARC_VBuddyMeta {
 	/// The size of the smallest object that can be allocated.
 	size_t smallest_object;
 	/// Lock for the meta.
-	ARC_GenericMutex mutex;
+	ARC_GenericSpinlock lock;
 };
 
 void *vbuddy_alloc(struct ARC_VBuddyMeta *meta, size_t size);

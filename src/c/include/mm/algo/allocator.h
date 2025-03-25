@@ -34,7 +34,6 @@
 void *ialloc(size_t size);
 void *icalloc(size_t size, size_t count);
 void *ifree(void *address);
-void *irealloc(void *address, size_t size);
 
 int iallocator_expand(size_t pages);
 

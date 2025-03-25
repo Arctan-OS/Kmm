@@ -64,18 +64,8 @@ void *free(void *address) {
 	return ret;
 }
 
-void *realloc(void *address, size_t size) {
-	(void)address;
-	(void)size;
-
-	ARC_DEBUG(ERR, "Unimplemented Arc_Realloc\n");
-
-	return NULL;
-}
-
 int allocator_expand(size_t pages) {
-	(void)pages;
-	return 0;
+	return pslab_expand(&meta, pages);
 }
 
 int init_allocator(size_t pages) {
@@ -85,11 +75,6 @@ int init_allocator(size_t pages) {
 	if (range == NULL) {
 		return -1;
 	}
-
-	// NOTE: Bit 0 is set here as the free function blindly pokes the SLAB allocator
-	//       to see if it can free the given address. If it can't the SLAB allocator, properly
-	//       reports an error. This is not desired here, as the allocation may be allocated using
-	//       the VMM instead. The free function resorts to reporting its own error in the event
-	//       it fails
-	return init_pslab(&meta, range, range_length, 1) != range + range_length;
+	
+	return init_pslab(&meta, range, range_length) != range + range_length;
 }

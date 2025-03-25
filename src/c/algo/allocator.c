@@ -30,6 +30,7 @@
 #include <mm/algo/pslab.h>
 #include <mm/pmm.h>
 #include <global.h>
+#include <string.h>
 
 static struct ARC_PSlabMeta meta = { 0 };
 
@@ -45,35 +46,17 @@ void *ifree(void *address) {
 	return pslab_free(&meta, address);
 }
 
-void *irealloc(void *address, size_t size) {
-	(void)address;
-	(void)size;
-
-	ARC_DEBUG(ERR, "Unimplemented Arc_Realloc\n");
-
-	return NULL;
-}
-
 int iallocator_expand(size_t pages) {
-	int cumulative_err = (pslab_expand(&meta, 0, pages) == 0);
-	cumulative_err += (pslab_expand(&meta, 1, pages) == 0);
-	cumulative_err += (pslab_expand(&meta, 2, pages) == 0);
-	cumulative_err += (pslab_expand(&meta, 3, pages) == 0);
-	cumulative_err += (pslab_expand(&meta, 4, pages) == 0);
-	cumulative_err += (pslab_expand(&meta, 5, pages) == 0);
-	cumulative_err += (pslab_expand(&meta, 6, pages) == 0);
-	cumulative_err += (pslab_expand(&meta, 7, pages) == 0);
-
-	return cumulative_err;
+	return pslab_expand(&meta, pages);
 }
 
 int init_iallocator(size_t pages) {
-	size_t range_length = (pages << 12) * 8;
-	void *range = (void *)pmm_alloc_pages(pages * 8);
+	size_t range_length = (pages << 12);
+	void *range = (void *)pmm_alloc_pages(pages);
 
 	if (range == NULL) {
 		return -1;
 	}
 
-	return init_pslab(&meta, range, range_length, 0) != range + range_length;
+	return init_pslab(&meta, range, range_length) != range + range_length;
 }

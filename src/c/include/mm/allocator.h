@@ -32,7 +32,6 @@
 void *alloc(size_t size);
 void *calloc(size_t size, size_t count);
 void *free(void *address);
-void *realloc(void *address, size_t size);
 
 int allocator_expand(size_t pages);
 

@@ -36,8 +36,6 @@ struct ARC_PSlabMeta {
 	size_t list_sizes[8];
 	void *range;
 	size_t range_length;
-	uint32_t attributes; // Bit | Description
-			     // 0   | 1: Disable error message on frees, (0): Enable error message on frees
 };
 
 /**
@@ -63,20 +61,18 @@ void *pslab_free(struct ARC_PSlabMeta *meta, void *address);
  * of pages.
  *
  * @param struct ARC_PSlabMeta *pslab - The SLAB to expand.
- * @param int list - The freelist within the SLAB (0-7).
- * @param int pages - The number of pages to expand the list by.
+ * @param int pages - The total number of pages to expand the allocator by.
  * @return zero upon success.
  * */
-int pslab_expand(struct ARC_PSlabMeta *pslab, int list, size_t pages);
+int pslab_expand(struct ARC_PSlabMeta *pslab, size_t pages);
 /**
  * Initialize the kernel SLAB allocator.
  *
  * @param struct ARC_PFreelistMeta *memory - The freelist in which to initialize the allocator's lists.
  * @param void *range - The base address of the contiguous allocation where the SLAB should be initialized.
  * @param size_t range_size - Size of the range in bytes.
- * @param uint32_t attributes - Attributes the allocator should work with, see meta structure for bit definitions.
  * @return Error code (0: success).
  * */
-void *init_pslab(struct ARC_PSlabMeta *meta, void *range, size_t range_size, uint32_t attributes);
+void *init_pslab(struct ARC_PSlabMeta *meta, void *range, size_t range_size);
 
 #endif

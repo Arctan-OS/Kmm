@@ -46,10 +46,27 @@ void *pfreelist_alloc(struct ARC_PFreelistMeta *meta) {
 	}
 
 	// Get address, mark as used
-	struct ARC_PFreelistNode *node = NULL;
 
-	ARC_ATOMIC_DEC(meta->free_objects);
-	ARC_ATOMIC_XCHG(&meta->head, &meta->head->next, &node);
+	/*
+	struct ARC_PFreelistNode *node = NULL;
+	struct ARC_PFreelistNode **head = &meta->head;
+	struct ARC_PFreelistNode **out = &node;
+	ARC_ATOMIC_MFENCE;
+	register struct ARC_PFreelistNode *a = meta->head;
+	if (a != NULL) {
+		ARC_ATOMIC_XCHG(head, &a->next, out);
+	} else {
+		return NULL;
+	}
+	*/
+
+	spinlock_lock(&meta->lock);
+	struct ARC_PFreelistNode *node = meta->head;
+	if (node != NULL) {
+		meta->head = meta->head->next;
+		ARC_ATOMIC_DEC(meta->free_objects);
+	}
+	spinlock_unlock(&meta->lock);
 
 	return (void *)node;
 }
@@ -154,11 +171,16 @@ void *pfreelist_free(struct ARC_PFreelistMeta *meta, void *address) {
 	struct ARC_PFreelistNode *node = (struct ARC_PFreelistNode *)address;
 
 	// Mark as free
+	spinlock_lock(&meta->lock);
 	node->next = meta->head;
-	
+	meta->head = node;
+	spinlock_unlock(&meta->lock);
+	ARC_ATOMIC_INC(meta->free_objects);
+
+	/*
 	struct ARC_PFreelistNode *ret = NULL;
 	ARC_ATOMIC_XCHG(&meta->head, &node, &ret);
-	ARC_ATOMIC_INC(meta->free_objects);
+	*/
 
 	return address;
 }
@@ -169,14 +191,7 @@ void *pfreelist_contig_free(struct ARC_PFreelistMeta *meta, void *address, uint6
 		return NULL;
 	}
 
-	mutex_lock(&meta->mutex);
-
 	while (meta != NULL && !ADDRESS_IN_META(address, meta)) {
-		if (meta->next != NULL) {
-			mutex_lock(&meta->next->mutex);
-		}
-
-		mutex_unlock(&meta->mutex);
 		meta = meta->next;
 	}
 
@@ -195,12 +210,11 @@ void *pfreelist_contig_free(struct ARC_PFreelistMeta *meta, void *address, uint6
 
 	meta->free_objects += objects;
 
-	mutex_unlock(&meta->mutex);
-
 	return address;
 }
 
 // Combine list A and list B into a single list, combined
+// B is expected to be a leaf meta (meta->next == NULL)
 // Return: 0 = success
 // Return: -1 = object size mismatch
 // Return: -2 = either list was NULL
@@ -214,20 +228,15 @@ int link_pfreelists(struct ARC_PFreelistMeta *A, struct ARC_PFreelistMeta *B) {
 		return -1;
 	}
 
-	mutex_lock(&A->mutex);
-
 	// Advance to the last list
 	struct ARC_PFreelistMeta *last = A;
 	while (last->next != NULL) {
-		mutex_lock(&last->next->mutex);
-		mutex_unlock(&last->mutex);
 		last = last->next;
 	}
 
 	// Link A and B
-	last->next = B;
-
-	mutex_unlock(&last->mutex);
+	struct ARC_PFreelistMeta *temp = B;
+	ARC_ATOMIC_XCHG(&last->next, &temp, &B->next);
 
 	return 0;
 }
@@ -247,7 +256,7 @@ struct ARC_PFreelistMeta *init_pfreelist(uint64_t _base, uint64_t _ceil, uint64_
 
 	memset(meta, 0, sizeof(struct ARC_PFreelistMeta));
 
-	init_static_mutex(&meta->mutex);
+	init_static_spinlock(&meta->lock);
 
 	// Number of objects to accomodate meta
 	int objects = (sizeof(struct ARC_PFreelistMeta) / _object_size) + 1;
