@@ -41,7 +41,7 @@ struct ARC_VBuddyMeta {
 	/// Internal metadata allocation function
 	void *(*ialloc)(size_t size);
 	/// Internal metadata free function
-	void *(*ifree)(void *address);
+	size_t (*ifree)(void *address);
 	/// The size of the smallest object that can be allocated.
 	size_t smallest_object;
 	/// Lock for the meta.

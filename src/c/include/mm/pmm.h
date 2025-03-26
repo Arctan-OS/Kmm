@@ -45,7 +45,7 @@ void *pmm_low_free_pages(void *address, size_t pages);
 
 // These functions use the vbuddies
 void *pmm_alloc(size_t size);
-void *pmm_free(void *address);
+size_t pmm_free(void *address);
 
 int init_pmm_contig();
 int init_pmm(struct ARC_MMap *mmap, int entries);

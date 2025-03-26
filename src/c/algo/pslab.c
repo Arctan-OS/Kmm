@@ -47,18 +47,23 @@ void *pslab_alloc(struct ARC_PSlabMeta *meta, size_t size) {
 	return NULL;
 }
 
-void *pslab_free(struct ARC_PSlabMeta *meta, void *address) {
+size_t pslab_free(struct ARC_PSlabMeta *meta, void *address) {
 	for (int i = 0; i < 8; i++) {
 		void *base = meta->lists[i]->base;
 		void *ceil = meta->lists[i]->ceil;
 
 		if (base <= address && address <= ceil) {
 			memset(address, 0, meta->list_sizes[i]);
-			return pfreelist_free(meta->lists[i], address);
+		
+			if (pfreelist_free(meta->lists[i], address) != address) {
+				return 0;
+			}
+
+			return meta->list_sizes[i];
 		}
 	}
 
-	return NULL;
+	return 0;
 }
 
 int pslab_expand(struct ARC_PSlabMeta *pslab, size_t pages) {

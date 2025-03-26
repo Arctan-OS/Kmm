@@ -31,11 +31,10 @@
 #include <mm/algo/pfreelist.h>
 
 struct ARC_PSlabMeta {
-	struct ARC_PFreelistMeta *physical_mem;
-	struct ARC_PFreelistMeta *lists[8];
-	size_t list_sizes[8];
 	void *range;
+	struct ARC_PFreelistMeta *lists[8];
 	size_t range_length;
+	size_t list_sizes[8];
 };
 
 /**
@@ -50,9 +49,9 @@ void *pslab_alloc(struct ARC_PSlabMeta *meta, size_t size);
  * Free the allocation at \a address.
  *
  * @param void *address - The allocation to free from the kernel heap.
- * @return The given address if successful.
+ * @return The size of the allocation (non-zero value).
  * */
-void *pslab_free(struct ARC_PSlabMeta *meta, void *address);
+size_t pslab_free(struct ARC_PSlabMeta *meta, void *address);
 
 /**
  * Expand a given SLAB's list

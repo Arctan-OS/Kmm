@@ -42,7 +42,7 @@ void *icalloc(size_t size, size_t count) {
 	return pslab_alloc(&meta, size * count);
 }
 
-void *ifree(void *address) {
+size_t ifree(void *address) {
 	return pslab_free(&meta, address);
 }
 

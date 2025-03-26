@@ -50,14 +50,14 @@ void *calloc(size_t size, size_t count) {
 	return pslab_alloc(&meta, final);
 }
 
-void *free(void *address) {
-	void *ret = pslab_free(&meta, address);
+size_t free(void *address) {
+	size_t ret = pslab_free(&meta, address);
 
-	if (ret == NULL && address != NULL) {
+	if (ret == 0 && address != NULL) {
 		ret = pmm_free(address);
 	}
 
-	if (ret == NULL) {
+	if (ret == 0) {
 		ARC_DEBUG(ERR, "Failed to free %p\n", address);
 	}
 

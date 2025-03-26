@@ -88,7 +88,7 @@ void *pmm_alloc(size_t size) {
 	return a;
 }
 
-void *pmm_free(void *address) {
+size_t pmm_free(void *address) {
 	struct vbuddy_list *current = arc_physical_contig_mem;
 	size_t size = 0;
 
@@ -97,7 +97,7 @@ void *pmm_free(void *address) {
 		current = current->next;
 	}
 
-	return (size > 0 ? address : NULL);
+	return size;
 }
 
 int init_pmm_contig() {
@@ -175,8 +175,7 @@ int init_pmm(struct ARC_MMap *mmap, int entries) {
 		
 		if (current->next != NULL) {
 			current->next = (struct ARC_PFreelistMeta *)ARC_PHYS_TO_HHDM(current->next);
-		}	
-		
+		}
 		
 		current = current->next;
 	}

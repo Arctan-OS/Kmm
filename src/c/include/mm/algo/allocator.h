@@ -33,7 +33,7 @@
 
 void *ialloc(size_t size);
 void *icalloc(size_t size, size_t count);
-void *ifree(void *address);
+size_t ifree(void *address);
 
 int iallocator_expand(size_t pages);
 
