@@ -26,8 +26,8 @@
  * Header file containing functions for the allocation of data structures for
  * the various memory management algorithms.
 */
-#ifndef ARC_MM_ALGO_ALLOCATOR
-#define ARC_MM_ALGO_ALLOCATOR
+#ifndef ARC_MM_IALLOCATOR
+#define ARC_MM_IALLOCATOR
 
 #include <stddef.h>
 

@@ -79,7 +79,7 @@ int pslab_expand(struct ARC_PSlabMeta *pslab, size_t pages) {
 	
 		ARC_DEBUG(INFO, "Expanding SLAB %p (%d) by %lu pages\n", pslab, list, pages);
 		
-		err += link_pfreelists(pslab->lists[list], meta);
+//		err += link_pfreelists(pslab->lists[list], meta);
 	}
 
 	return err;

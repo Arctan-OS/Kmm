@@ -36,12 +36,8 @@
 // Allocate one object in given list
 // Return: non-NULL = success
 void *pfreelist_alloc(struct ARC_PFreelistMeta *meta) {	
-	while (meta != NULL && meta->free_objects < 1) {
-		meta = meta->next;
-	}
-
 	if (meta == NULL || meta->head == NULL) {
-		ARC_DEBUG(ERR, "Found meta is NULL\n");
+		ARC_DEBUG(ERR, "Cannot allocate as meta (%p) or head (%p) are NULL\n", meta, meta == NULL ? NULL : meta->head);
 		return NULL;
 	}
 
@@ -72,12 +68,8 @@ void *pfreelist_alloc(struct ARC_PFreelistMeta *meta) {
 }
 
 void *pfreelist_contig_alloc(struct ARC_PFreelistMeta *meta, uint64_t objects) {
-	while (meta->free_objects < objects && meta != NULL) {
-		meta = meta->next;
-	}
-
 	if (meta == NULL) {
-		ARC_DEBUG(INFO, "Found meta is NULL\n");
+		ARC_DEBUG(INFO, "Meta is NULL\n");
 		return NULL;
 	}
 
@@ -154,17 +146,8 @@ void *pfreelist_contig_alloc(struct ARC_PFreelistMeta *meta, uint64_t objects) {
 // Free given address in given list
 // Return: non-NULL = success
 void *pfreelist_free(struct ARC_PFreelistMeta *meta, void *address) {
-	if (meta == NULL || address == NULL) {
-		ARC_DEBUG(ERR, "Failed to free %p in %p\n", address, meta);
-		return NULL;
-	}
-
-	while (meta != NULL && !ADDRESS_IN_META(address, meta)) {
-		meta = meta->next;
-	}
-
-	if (meta == NULL) {
-		ARC_DEBUG(ERR, "Could not find %p in given list\n", address);
+	if (meta == NULL || address == NULL || !ADDRESS_IN_META(address, meta)) {
+		ARC_DEBUG(ERR, "Failed to free %p in %p, or address is not in meta\n", address, meta);
 		return NULL;
 	}
 
@@ -186,13 +169,9 @@ void *pfreelist_free(struct ARC_PFreelistMeta *meta, void *address) {
 }
 
 void *pfreelist_contig_free(struct ARC_PFreelistMeta *meta, void *address, uint64_t objects) {
-	if (meta == NULL || address == NULL) {
-		ARC_DEBUG(ERR, "Failed to free %p in %p\n", address, meta);
+	if (meta == NULL || address == NULL || !ADDRESS_IN_META(address, meta)) {
+		ARC_DEBUG(ERR, "Failed to free %p in %p, or address is not in meta\n", address, meta);
 		return NULL;
-	}
-
-	while (meta != NULL && !ADDRESS_IN_META(address, meta)) {
-		meta = meta->next;
 	}
 
 	if (meta == NULL) {
@@ -211,34 +190,6 @@ void *pfreelist_contig_free(struct ARC_PFreelistMeta *meta, void *address, uint6
 	meta->free_objects += objects;
 
 	return address;
-}
-
-// Combine list A and list B into a single list, combined
-// B is expected to be a leaf meta (meta->next == NULL)
-// Return: 0 = success
-// Return: -1 = object size mismatch
-// Return: -2 = either list was NULL
-int link_pfreelists(struct ARC_PFreelistMeta *A, struct ARC_PFreelistMeta *B) {
-	if (A == NULL || B == NULL) {
-		return -2;
-	}
-
-	if (A->object_size != B->object_size) {
-		// Object size mismatch, should not link lists
-		return -1;
-	}
-
-	// Advance to the last list
-	struct ARC_PFreelistMeta *last = A;
-	while (last->next != NULL) {
-		last = last->next;
-	}
-
-	// Link A and B
-	struct ARC_PFreelistMeta *temp = B;
-	ARC_ATOMIC_XCHG(&last->next, &temp, &B->next);
-
-	return 0;
 }
 
 struct ARC_PFreelistMeta *init_pfreelist(uint64_t _base, uint64_t _ceil, uint64_t _object_size) {

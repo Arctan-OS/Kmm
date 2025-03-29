@@ -25,9 +25,8 @@
  * @DESCRIPTION
 */
 
-#include "lib/atomics.h"
+#include <lib/atomics.h>
 #include <mm/algo/vbuddy.h>
-#include <mm/algo/allocator.h>
 #include <mm/pmm.h>
 #include <global.h>
 #include <stdbool.h>
@@ -176,7 +175,7 @@ int init_vbuddy(struct ARC_VBuddyMeta *meta, void *base, size_t size, size_t sma
 
 	init_static_spinlock(&meta->lock);
 
-	struct vbuddy_node *head = (struct vbuddy_node *)ialloc(sizeof(*head));
+	struct vbuddy_node *head = (struct vbuddy_node *)meta->ialloc(sizeof(*head));
 
 	if (head == NULL) {
 		return -2;

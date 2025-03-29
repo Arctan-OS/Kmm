@@ -26,7 +26,7 @@
  * Implementation of functions to allocate data structures for other memory management
  * algorithms.
 */
-#include <mm/algo/allocator.h>
+#include <mm/iallocator.h>
 #include <mm/algo/pslab.h>
 #include <mm/pmm.h>
 #include <global.h>

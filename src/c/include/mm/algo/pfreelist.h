@@ -45,8 +45,6 @@ struct ARC_PFreelistMeta {
 	struct ARC_PFreelistNode *base __attribute__((aligned(8)));
 	/// Last node.
 	struct ARC_PFreelistNode *ceil __attribute__((aligned(8)));
-	/// Next joined list.
-	struct ARC_PFreelistMeta *next __attribute__((aligned(8)));
 	/// Size of each node in bytes.
 	uint64_t object_size __attribute__((aligned(8)));
 	/// Number of free objects in this meta.
@@ -66,6 +64,9 @@ void *pfreelist_alloc(struct ARC_PFreelistMeta *meta);
 /**
  * Allocate a contiguous section of memory.
  *
+ * It is not advisable to use this function if the freelist has already been used. For
+ * instance, a single object has already been freed.
+ *
  * @param struct ARC_PFreelistMeta *meta - The list in which to allocate the contiguous region of memory.
  * @param uint64_t objects - Number of contiguous objects to allocate.
  * @return The base address of the contiguous section.
@@ -84,20 +85,14 @@ void *pfreelist_free(struct ARC_PFreelistMeta *meta, void *address);
 /**
  * Free a contiguous section of memory.
  *
+ * It is not advisable to use this function if the freelist has already been used. For
+ * instance, a single object has already been freed.
+ *
  * @param struct ARC_PFreelistMeta *meta - The list in which to free the contiguous region of memory.
  * @param void *address - The base address of the contiguous section.
  * @param uint64_t objects - The number of objects the section consists of.
  * @return The base address if the free was successful. */
 void *pfreelist_contig_free(struct ARC_PFreelistMeta *meta, void *address, uint64_t objects);
-
-/**
- * Combine list A and list B.
- *
- * @return When a 0 is returned, linking of A and B was successfull.\n
- * When a -1 is returned, the object size of A and B don't match.\n
- * When a -2 is returned, either list is NULL.\n
- * */
-int link_pfreelists(struct ARC_PFreelistMeta *A, struct ARC_PFreelistMeta *B);
 
 /**
  * Initialize the given memory as a pfreelist.
