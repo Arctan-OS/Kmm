@@ -41,21 +41,6 @@ void *pfreelist_alloc(struct ARC_PFreelistMeta *meta) {
 		return NULL;
 	}
 
-	// Get address, mark as used
-
-	/*
-	struct ARC_PFreelistNode *node = NULL;
-	struct ARC_PFreelistNode **head = &meta->head;
-	struct ARC_PFreelistNode **out = &node;
-	ARC_ATOMIC_MFENCE;
-	register struct ARC_PFreelistNode *a = meta->head;
-	if (a != NULL) {
-		ARC_ATOMIC_XCHG(head, &a->next, out);
-	} else {
-		return NULL;
-	}
-	*/
-
 	spinlock_lock(&meta->lock);
 	struct ARC_PFreelistNode *node = meta->head;
 	if (node != NULL) {

@@ -48,6 +48,6 @@ void *pmm_alloc(size_t size);
 size_t pmm_free(void *address);
 
 int init_pmm_contig();
-int init_pmm(struct ARC_MMap *mmap, int entries);
+int init_pmm(struct ARC_BootMMap *mmap, int entries);
 
 #endif

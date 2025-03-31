@@ -253,12 +253,12 @@ static int pmm_convert_to_dynamic_banks() {
 	return 0;
 }
 
-static uintptr_t pmm_init_missed_memory(struct ARC_MMap *mmap, int entries, uintptr_t highest_ceil) {
+static uintptr_t pmm_init_missed_memory(struct ARC_BootMMap *mmap, int entries, uintptr_t highest_ceil) {
 	ARC_DEBUG(INFO, "Initializing possibly missed memory:\n");
 	uintptr_t ret = highest_ceil;
 
 	for (int i = 0; i < entries; i++) {
-		struct ARC_MMap entry = mmap[i];
+		struct ARC_BootMMap entry = mmap[i];
 
 		ARC_DEBUG(INFO, "\t%3d : 0x%016"PRIx64" -> 0x%016"PRIx64" (0x%016"PRIx64" bytes) | (%d)\n", i, entry.base, entry.base + entry.len, entry.len, entry.type);
 
@@ -348,7 +348,7 @@ static int pmm_init_contiguous_high_memory() {
 	return count;
 }
 
-int init_pmm(struct ARC_MMap *mmap, int entries) {
+int init_pmm(struct ARC_BootMMap *mmap, int entries) {
 	ARC_DEBUG(INFO, "Setting up PMM\n");
 
 	if (mmap == NULL || entries == 0) {
@@ -376,7 +376,7 @@ int init_pmm(struct ARC_MMap *mmap, int entries) {
 		ARC_HANG;
 	}
 
-	highest_ceil = pmm_init_missed_memory((struct ARC_MMap *)ARC_PHYS_TO_HHDM(mmap),entries, highest_ceil);
+	highest_ceil = pmm_init_missed_memory(mmap,entries, highest_ceil);
 	ARC_DEBUG(INFO, "Highest allocatable address: 0x%"PRIx64"\n", highest_ceil);
 
 	if (pmm_init_contiguous_high_memory() <= 0) {
