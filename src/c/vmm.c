@@ -45,6 +45,14 @@ size_t vmm_free(struct ARC_VMMMeta *meta, void *address) {
         return vbuddy_free(&meta->buddy, address);
 }
 
+size_t vmm_len(struct ARC_VMMMeta *meta, void *address) {
+        if (meta == NULL) {
+                return 0;
+        }
+
+        return vbuddy_len(&meta->buddy, address);
+}
+
 struct ARC_VMMMeta *init_vmm(void *base, size_t size) {
         struct ARC_VMMMeta *meta = (struct ARC_VMMMeta *)alloc(sizeof(*meta));
 

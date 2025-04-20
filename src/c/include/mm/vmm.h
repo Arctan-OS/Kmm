@@ -37,6 +37,7 @@ struct ARC_VMMMeta {
 
 void *vmm_alloc(struct ARC_VMMMeta *meta, size_t size);
 size_t vmm_free(struct ARC_VMMMeta *meta, void *address);
+size_t vmm_len(struct ARC_VMMMeta *meta, void *address);
 struct ARC_VMMMeta *init_vmm(void *base, size_t size);
 
 #endif

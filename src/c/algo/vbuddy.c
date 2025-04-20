@@ -150,15 +150,32 @@ size_t vbuddy_free(struct ARC_VBuddyMeta *meta, void *address) {
 	size_t ret = 0;
 
 	if (current == NULL || (current->attributes & 1) == 0) {
-		return ret;
+		return 0;
 	}
 
 	ret = current->size;
 	current->attributes &= ~1;
-
 	merge(meta, current);
 
         return ret;
+}
+
+size_t vbuddy_len(struct ARC_VBuddyMeta *meta, void *address) {
+	if (meta == NULL || meta->tree == NULL) {
+		return 0;
+	}
+
+	struct vbuddy_node *current = meta->tree;
+
+	while (current != NULL && current->base != address) {
+		current = current->next;
+	}
+
+	if (current == NULL) {
+		return 0;
+	}
+
+        return current->size;
 }
 
 int init_vbuddy(struct ARC_VBuddyMeta *meta, void *base, size_t size, size_t smallest_object) {

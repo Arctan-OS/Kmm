@@ -50,6 +50,7 @@ struct ARC_VBuddyMeta {
 
 void *vbuddy_alloc(struct ARC_VBuddyMeta *meta, size_t size);
 size_t vbuddy_free(struct ARC_VBuddyMeta *meta, void *address);
+size_t vbuddy_len(struct ARC_VBuddyMeta *meta, void *address);
 
 /**
  * Create a buddy allocator
