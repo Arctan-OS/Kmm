@@ -177,6 +177,8 @@ static uintptr_t pmm_convert_banks_to_hhdm() {
 	ARC_DEBUG(INFO, "Converting bootstrap allocator to use HHDM addresses\n");
 
 	struct ARC_BankNode *node = (struct ARC_BankNode *)ARC_PHYS_TO_HHDM(high_bank_meta->first);
+	high_bank_meta->first = node;
+
 	uintptr_t highest_ceil = 0;
 	while (node != NULL) {
 		struct ARC_PFreelistMeta *meta = (struct ARC_PFreelistMeta *)ARC_PHYS_TO_HHDM(node->allocator_meta);
@@ -184,28 +186,35 @@ static uintptr_t pmm_convert_banks_to_hhdm() {
 
 		meta->base = (struct ARC_PFreelistNode *)ARC_PHYS_TO_HHDM(meta->base);
 		meta->ceil = (struct ARC_PFreelistNode *)ARC_PHYS_TO_HHDM(meta->ceil);
-		
+
 		if ((uintptr_t)meta->ceil > highest_ceil) {
 			highest_ceil = (uintptr_t)meta->ceil;
 		}
 
-		meta->head = (struct ARC_PFreelistNode *)ARC_PHYS_TO_HHDM(((uint64_t)meta->head) & UINT32_MAX);
+		if ((((uint64_t)meta->head) & UINT32_MAX) != 0) {
+			meta->head = (struct ARC_PFreelistNode *)ARC_PHYS_TO_HHDM(((uint64_t)meta->head) & UINT32_MAX);
+		}
 		
 		if (node->next != NULL) {
 			node->next = (struct ARC_BankNode *)ARC_PHYS_TO_HHDM(node->next);
 		}
-		
+
 		node = node->next;
 	}
-	
+
 	node = (struct ARC_BankNode *)ARC_PHYS_TO_HHDM(low_bank_meta->first);
+	low_bank_meta->first = node;
+
 	while (node != NULL) {
 		struct ARC_PFreelistMeta *meta = (struct ARC_PFreelistMeta *)ARC_PHYS_TO_HHDM(node->allocator_meta);
 		node->allocator_meta = meta;
 
 		meta->base = (struct ARC_PFreelistNode *)ARC_PHYS_TO_HHDM(meta->base);
 		meta->ceil = (struct ARC_PFreelistNode *)ARC_PHYS_TO_HHDM(meta->ceil);
-		meta->head = (struct ARC_PFreelistNode *)ARC_PHYS_TO_HHDM(((uint64_t)meta->head) & UINT32_MAX);
+		
+		if ((((uint64_t)meta->head) & UINT32_MAX) != 0) {
+			meta->head = (struct ARC_PFreelistNode *)ARC_PHYS_TO_HHDM(((uint64_t)meta->head) & UINT32_MAX);
+		}
 		
 		if (node->next != NULL) {
 			node->next = (struct ARC_BankNode *)ARC_PHYS_TO_HHDM(node->next);
@@ -314,8 +323,8 @@ static int pmm_init_contiguous_high_memory() {
 		void *base = pfreelist_contig_alloc(freelist, size / PAGE_SIZE);
 
 		if (base == NULL) {
-			ARC_DEBUG(ERR, "\tFailed to allocate region for bank\n");
-			return -2;
+			node = node->next;
+			continue;
 		}
 
 		struct ARC_VBuddyMeta *meta = ialloc(sizeof(*meta));
@@ -377,6 +386,7 @@ int init_pmm(struct ARC_BootMMap *mmap, int entries) {
 	}
 
 	highest_ceil = pmm_init_missed_memory(mmap,entries, highest_ceil);
+
 	ARC_DEBUG(INFO, "Highest allocatable address: 0x%"PRIx64"\n", highest_ceil);
 
 	if (pmm_init_contiguous_high_memory() <= 0) {

@@ -36,8 +36,8 @@
 // Allocate one object in given list
 // Return: non-NULL = success
 void *pfreelist_alloc(struct ARC_PFreelistMeta *meta) {	
-	if (meta == NULL || meta->head == NULL) {
-		ARC_DEBUG(ERR, "Cannot allocate as meta (%p) or head (%p) are NULL\n", meta, meta == NULL ? NULL : meta->head);
+	if (meta == NULL || meta->head == NULL || meta->free_objects == 0) {
+		ARC_DEBUG(ERR, "Cannot allocate as meta (%p) or head (%p) are NULL or there are no more objects\n", meta, meta == NULL ? NULL : meta->head);
 		return NULL;
 	}
 
@@ -53,16 +53,16 @@ void *pfreelist_alloc(struct ARC_PFreelistMeta *meta) {
 }
 
 void *pfreelist_contig_alloc(struct ARC_PFreelistMeta *meta, uint64_t objects) {
-	if (meta == NULL) {
-		ARC_DEBUG(INFO, "Meta is NULL\n");
+	if (meta == NULL || meta->free_objects < objects) {
+		ARC_DEBUG(INFO, "Meta is NULL, or no more free objects (%lu)\n");
 		return NULL;
 	}
-
+	
 	struct ARC_PFreelistMeta to_free = { 0 };
 	to_free.object_size = meta->object_size;
 	to_free.base = meta->base;
 	to_free.ceil = meta->ceil;
-
+	
 	// Number of objects currently allocated
 	uint64_t object_count = 0;
 	// Limit so we don't try to allocate all of memory
