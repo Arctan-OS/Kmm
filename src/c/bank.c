@@ -4,10 +4,10 @@
  * @author awewsomegamer <awewsomegamer@gmail.com>
  *
  * @LICENSE
- * Arctan - Operating System Kernel
+ * Arctan-OS/Kernel - Operating System Kernel
  * Copyright (C) 2023-2025 awewsomegamer
  *
- * This file is part of Arctan.
+ * This file is part of Arctan-OS/Kernel.
  *
  * Arctan is free software; you can redistribute it and/or
  * modify it under the terms of the GNU General Public License
@@ -25,7 +25,6 @@
  * @DESCRIPTION
 */
 #include <mm/allocator.h>
-#include <mm/iallocator.h>
 #include <mm/bank.h>
 
 struct ARC_BankNode *bank_add(struct ARC_BankMeta *meta, void *allocator) {
@@ -80,8 +79,8 @@ int init_static_bank(struct ARC_BankMeta *meta, int type, int use_alloc) {
 
         switch (use_alloc) {
                 case ARC_BANK_USE_ALLOC_INTERNAL: {
-                        meta->alloc = ialloc; 
-                        meta->free = ifree;
+                        //meta->alloc = ialloc; 
+                        //meta->free = ifree;
                         break;
                 }
                 case ARC_BANK_USE_ALLOC_GENERAL: {
@@ -106,8 +105,8 @@ struct ARC_BankMeta *init_bank(int type, int use_alloc) {
 
         switch (use_alloc) {
                 case ARC_BANK_USE_ALLOC_INTERNAL: {
-                        meta_alloc = ialloc; 
-                        meta_free = ifree;
+                        //meta_alloc = ialloc; 
+                        //meta_free = ifree;
                         break;
                 }
                 case ARC_BANK_USE_ALLOC_GENERAL: {

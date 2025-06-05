@@ -4,10 +4,10 @@
  * @author awewsomegamer <awewsomegamer@gmail.com>
  *
  * @LICENSE
- * Arctan - Operating System Kernel
+ * Arctan-OS/Kernel - Operating System Kernel
  * Copyright (C) 2023-2025 awewsomegamer
  *
- * This file is part of Arctan.
+ * This file is part of Arctan-OS/Kernel.
  *
  * Arctan is free software; you can redistribute it and/or
  * modify it under the terms of the GNU General Public License
@@ -48,6 +48,6 @@ void *pmm_alloc(size_t size);
 size_t pmm_free(void *address);
 
 int init_pmm_contig();
-int init_pmm(struct ARC_BootMMap *mmap, int entries);
+int init_pmm(struct ARC_MMap *mmap, int entries);
 
 #endif

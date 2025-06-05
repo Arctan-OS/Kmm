@@ -4,7 +4,7 @@
  * @author awewsomegamer <awewsomegamer@gmail.com>
  *
  * @LICENSE
- * Arctan - Operating System Kernel
+ * Arctan-OS/Kernel - Operating System Kernel
  * Copyright (C) 2023-2025 awewsomegamer
  *
  * This file is part of Arctan-MB2BSP

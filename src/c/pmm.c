@@ -4,10 +4,10 @@
  * @author awewsomegamer <awewsomegamer@gmail.com>
  *
  * @LICENSE
- * Arctan - Operating System Kernel
+ * Arctan-OS/Kernel - Operating System Kernel
  * Copyright (C) 2023-2025 awewsomegamer
  *
- * This file is part of Arctan.
+ * This file is part of Arctan-OS/Kernel.
  *
  * Arctan is free software; you can redistribute it and/or
  * modify it under the terms of the GNU General Public License
@@ -40,7 +40,6 @@
 */
 #include <arch/x86-64/util.h>
 #include <mm/bank.h>
-#include <mm/iallocator.h>
 #include <arctan.h>
 #include <global.h>
 #include <mm/algo/pfreelist.h>
@@ -171,8 +170,8 @@ size_t pmm_free(void *address) {
 }
 
 static uintptr_t pmm_convert_banks_to_hhdm() {
-	high_bank_meta = (struct ARC_BankMeta *)ARC_PHYS_TO_HHDM(Arc_BootMeta->pmm_high_bank);
-	low_bank_meta = (struct ARC_BankMeta *)ARC_PHYS_TO_HHDM(Arc_BootMeta->pmm_low_bank);
+	high_bank_meta = NULL; // (struct ARC_BankMeta *)ARC_PHYS_TO_HHDM(Arc_BootMeta->pmm_high_bank);
+	low_bank_meta = NULL; // (struct ARC_BankMeta *)ARC_PHYS_TO_HHDM(Arc_BootMeta->pmm_low_bank);
 
 	ARC_DEBUG(INFO, "Converting bootstrap allocator to use HHDM addresses\n");
 
@@ -226,6 +225,10 @@ static uintptr_t pmm_convert_banks_to_hhdm() {
 	return highest_ceil;
 }
 
+static int pmm_init_iallocator(int pages) {
+	return 0;
+}
+
 static int pmm_convert_to_dynamic_banks() {
 	struct ARC_BankMeta *dynamic_high = init_bank(ARC_BANK_TYPE_PFREELIST, ARC_BANK_USE_ALLOC_INTERNAL);
 	
@@ -238,7 +241,7 @@ static int pmm_convert_to_dynamic_banks() {
 
 	if (dynamic_low == NULL) {
 		ARC_DEBUG(ERR, "Failed to allocate low dynamic bank\n");
-		ifree(dynamic_high);
+		// ifree(dynamic_high);
 		return -2;
 	}
 
@@ -262,12 +265,12 @@ static int pmm_convert_to_dynamic_banks() {
 	return 0;
 }
 
-static uintptr_t pmm_init_missed_memory(struct ARC_BootMMap *mmap, int entries, uintptr_t highest_ceil) {
+static uintptr_t pmm_init_missed_memory(struct ARC_MMap *mmap, int entries, uintptr_t highest_ceil) {
 	ARC_DEBUG(INFO, "Initializing possibly missed memory:\n");
 	uintptr_t ret = highest_ceil;
 
 	for (int i = 0; i < entries; i++) {
-		struct ARC_BootMMap entry = mmap[i];
+		struct ARC_MMap entry = mmap[i];
 
 		ARC_DEBUG(INFO, "\t%3d : 0x%016"PRIx64" -> 0x%016"PRIx64" (0x%016"PRIx64" bytes) | (%d)\n", i, entry.base, entry.base + entry.len, entry.len, entry.type);
 
@@ -327,25 +330,25 @@ static int pmm_init_contiguous_high_memory() {
 			continue;
 		}
 
-		struct ARC_VBuddyMeta *meta = ialloc(sizeof(*meta));
+		struct ARC_VBuddyMeta *meta = NULL; // ialloc(sizeof(*meta));
 
 		if (meta == NULL) {
 			ARC_DEBUG(ERR, "\tFailed to allocate new contiguous meta\n");
 			break;
 		}
 
-		meta->ialloc = ialloc;
-		meta->ifree = ifree;
+		// meta->ialloc = ialloc;
+		// meta->ifree = ifree;
 
 		if (init_vbuddy(meta, base, size, PAGE_SIZE) != 0) {
 			ARC_DEBUG(ERR, "\tFailed to initialize bank\n");
 			return -2;
 		}
 
-		if (bank_add(high_contig_bank_meta, meta) == NULL) {
-			ARC_DEBUG(ERR, "\tCould not insert into bank list\n");
-			break;
-		}
+		// if (bank_add(high_contig_bank_meta, meta) == NULL) {
+		// 	ARC_DEBUG(ERR, "\tCould not insert into bank list\n");
+		// 	break;
+		// }
 
 		count++;
 
@@ -357,7 +360,7 @@ static int pmm_init_contiguous_high_memory() {
 	return count;
 }
 
-int init_pmm(struct ARC_BootMMap *mmap, int entries) {
+int init_pmm(struct ARC_MMap *mmap, int entries) {
 	ARC_DEBUG(INFO, "Setting up PMM\n");
 
 	if (mmap == NULL || entries == 0) {
@@ -374,7 +377,7 @@ int init_pmm(struct ARC_BootMMap *mmap, int entries) {
 
 	ARC_DEBUG(INFO, "Highest allocatable address: 0x%"PRIx64"\n", highest_ceil);
 
-	if (init_iallocator(256) != 0) {
+	if (pmm_init_iallocator(256) != 0) {
 		ARC_DEBUG(ERR, "Failed to initialize internal allocator\n");
 		ARC_HANG;
 	}
