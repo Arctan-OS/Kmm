@@ -24,19 +24,62 @@
  *
  * @DESCRIPTION
  * Initialize the physical memory manager.
+ * On x86-64 system, low memory can be defined as all memory below 1 MiB. If the option
+ * to reserve low memory is set at compile, this memory will not be used in the initialization
+ * of the physical memory manager.
+ *
+ * The physical memory manager consists of two unique allocator types: freelist and buddy.
+ * The first step is to segment memory greedily in page sized blocks. On x86-64 such blocks
+ * would be of sizes and in order of: 1 GiB, 2 MiB, and 4 KiB. With this segmentation, freelists
+ * can be constructed for each page size that is a power of two. Now, on x86-64, allocations
+ * of 1 GiB, 2 MiB, and 4 KiB can be made in constant time provided that the freelists exist
+ * for the desired size.
+ *
+ * Additionally, if sizes between the intervals of the page sizes is desired, then the buddy
+ * allocators will answer. These buddy allocators will have the same largest sizes as the blocks (i.e.
+ * on x86-64: 1 GiB, 2 MiB), and the smallest size of the smallest power of two page size (i.e. on
+ * x86-64: 4 KiB). These buddy allocators may now be used for power two allocations between the
+ * largest page size and the smallest page size.
+ *
+ * The order of operations is as follows:
+ *  1. Check for a freelist of that has the same block size as the requested
+ *     size
+ *     1.1 If such a list is found, preform a freelist allocation and return.
+ *         Otherwise proceed to 2
+ *  2. Fit the requested size to the next largest power two page size, and
+ *     find the first buddy allocator associated with this size (the buddy allocators are stored in a reverse linked list)
+ *     2.1 If an allocation is made with this buddy allocator, return.
+ *         Otherwise proceed to step 3
+ *  3. Choose to:
+ *      create a new buddy allocator (which can be done in constant time)
+ *      look for an existing buddy allocator that can make the allocation (done in linear time)
+ *      fail
+ *
+ * This introduced a plethora of challenges in determining the domain in which an allocation was
+ * made. This is a problem as this is a memory manager, not just an allocator, so freeing must also
+ * be preformed.
+ *
+ * Idea 0:
+ *  Loop through all buddy allocators, and check their bounds to see if the allocated address falls
+ *  within them. If it does: call a free for that address using the buddy allocator. Otherwise,
+ *  loop through each freelist and check their bounds to see if the allocated address falls
+ *  within them. If it does: call a free for that address using the freelist allocator. Otherwise,
+ *  fail.
+ *
+ * Biasing Function: (USE AN ARRAY)
+ *  A polynomial function, b, is defined to bias the memory manager towards certain powers of two, or
+ *  page sizes. This is done by computing | b(x) |, where x is the index of the power of two from the starting
+ *  power of two (x belongs to I). The larger the computed value, the lower the emphasis, the lower the computed
+ *  value, the more emphasis. | b(x) | = 0, represents the most emphasis.
  * 
- * The resulting physical memory map looks like:
- * |--------|-1-|----A----|----------------|---2---|--3--|--4--|-----A-----|--------------|
- *            1MB
- * 1: Bootstrapper, Kernel, and Initramfs
- * 2: Arbitrary reserved section
- * 3: Possible paging tables to switch from 32 bits to 64
- * 4: Internal allocator
- * A: Vbuddy contiguous allocator
- * - (with no character interruption): Freelist
- * 
- * Low memory (memory under 1 MB) is kept as its own freelist unless ARC_SEPARATE_LOW_MEM
- * is set to 0 (WIP).
+ *  NOTE: For implementation simplicity, only when | b(x) | = 0 does the given power of two get emphasis placed on it.
+ *        Functions for b should have a very large integer coefficient such as 1024x(x-1)(x-2)...
+ *
+ *  Emphasis is represented by a target value representing the number of segments of each power of two
+ *  in the freelists. These powers of two are initialized before any other power of two to ensure that
+ *  there are at least some of them.
+ *
+ *  This is because the freelist allocator will always be much faster than the buddy allocator.
 */
 #include <arch/x86-64/util.h>
 #include <mm/bank.h>
