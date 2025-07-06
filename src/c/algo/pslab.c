@@ -32,6 +32,8 @@
 #define SMALLEST_SIZE 16 // bytes
 
 void *pslab_alloc(struct ARC_PSlabMeta *meta, size_t size) {
+	/*
+	**
 	if (size > meta->list_sizes[7]) {
 		// Just allocate a contiguous set of pages
 		ARC_DEBUG(ERR, "Failed to allocate size %lu\n", size);
@@ -43,11 +45,12 @@ void *pslab_alloc(struct ARC_PSlabMeta *meta, size_t size) {
 			return pfreelist_alloc(meta->lists[i]);
 		}
 	}
-
+*/
 	return NULL;
 }
 
 size_t pslab_free(struct ARC_PSlabMeta *meta, void *address) {
+	/*
 	for (int i = 0; i < 8; i++) {
 		void *base = meta->lists[i]->base;
 		void *ceil = meta->lists[i]->ceil;
@@ -62,11 +65,13 @@ size_t pslab_free(struct ARC_PSlabMeta *meta, void *address) {
 			return meta->list_sizes[i];
 		}
 	}
-
+*/
 	return 0;
 }
 
 int pslab_expand(struct ARC_PSlabMeta *pslab, size_t pages) {
+	/*
+	**
 	if (pslab == NULL || pages == 0) {
 		return -1;
 	}
@@ -83,6 +88,8 @@ int pslab_expand(struct ARC_PSlabMeta *pslab, size_t pages) {
 	}
 
 	return err;
+	*/
+	return 0;
 }
 
 void *init_pslab(struct ARC_PSlabMeta *meta, void *range, size_t range_size) {

@@ -71,7 +71,7 @@
  *  page sizes. This is done by computing | b(x) |, where x is the index of the power of two from the starting
  *  power of two (x belongs to I). The larger the computed value, the lower the emphasis, the lower the computed
  *  value, the more emphasis. | b(x) | = 0, represents the most emphasis.
- * 
+ *
  *  NOTE: For implementation simplicity, only when | b(x) | = 0 does the given power of two get emphasis placed on it.
  *        Functions for b should have a very large integer coefficient such as 1024x(x-1)(x-2)...
  *
@@ -81,366 +81,235 @@
  *
  *  This is because the freelist allocator will always be much faster than the buddy allocator.
 */
-#include <arch/x86-64/util.h>
-#include <mm/bank.h>
-#include <arctan.h>
-#include <global.h>
-#include <mm/algo/pfreelist.h>
-#include <mm/algo/vbuddy.h>
+#include <arch/info.h>
 #include <mm/pmm.h>
-#include <stdint.h>
-#include <config.h>
+#include <arch/x86-64/config.h>
+#include <global.h>
+#include <lib/util.h>
+#include <mm/algo/pfreelist.h>
 
-static struct ARC_BankMeta *low_bank_meta = NULL;
-static struct ARC_BankMeta *high_bank_meta = NULL;
-static struct ARC_BankMeta *high_contig_bank_meta = NULL;
+static int pmm_bias_array[] = { PMM_BIAS_ARRAY };
+static int pmm_bias_coeff_array[] = { PMM_BIAS_COEFF };
 
-// NOTE: The pfreelist and vbuddy do check to ensure that the address
-//       being freed is within its meta; however, it would be nice to
-//       not rely on that and narrow the correct meta down within these
-//       free functions
 
-void *pmm_alloc_page() {
-	struct ARC_BankNode *node = high_bank_meta->first;
-	void *a = NULL;
-	while (node != NULL && a == NULL) {
-		a = pfreelist_alloc(node->allocator_meta);
-		node = node->next;
-	}
 
-	return a;
-}
+static uint32_t max_address_width = 0;
+static struct ARC_PFreelist *pmm_freelists = NULL;
+static void *pmm_buddies = NULL;
 
-void *pmm_free_page(void *address) {
-	struct ARC_BankNode *node = high_bank_meta->first;
-	void *a = NULL;
-	while (node != NULL && a == NULL) {
-		a = pfreelist_free(node->allocator_meta, address);
-		node = node->next;
-	}
-
-	return a;
-}
-
-void *pmm_alloc_pages(size_t pages) {
-	struct ARC_BankNode *node = high_bank_meta->first;
-	void *a = NULL;
-	while (node != NULL && a == NULL) {
-		a = pfreelist_contig_alloc(node->allocator_meta, pages);
-		node = node->next;
-	}
-
-	return a;
-}
-
-void *pmm_free_pages(void *address, size_t pages) {
-	struct ARC_BankNode *node = high_bank_meta->first;
-	void *a = NULL;
-	while (node != NULL && a == NULL) {
-		a = pfreelist_contig_free(node->allocator_meta, address, pages);
-		node = node->next;
-	}
-
-	return a;
-}
-
-void *pmm_low_alloc_page() {
-	struct ARC_BankNode *node = low_bank_meta->first;
-	void *a = NULL;
-	while (node != NULL && a == NULL) {
-		a = pfreelist_alloc(node->allocator_meta);
-		node = node->next;
-	}
-
-	return a;
-}
-
-void *pmm_low_free_page(void *address) {
-	struct ARC_BankNode *node = low_bank_meta->first;
-	void *a = NULL;
-	while (node != NULL && a == NULL) {
-		a = pfreelist_free(node->allocator_meta, address);
-		node = node->next;
-	}
-
-	return a;
-}
-
-void *pmm_low_alloc_pages(size_t pages) {
-	struct ARC_BankNode *node = low_bank_meta->first;
-	void *a = NULL;
-	while (node != NULL && a == NULL) {
-		a = pfreelist_contig_alloc(node->allocator_meta, pages);
-		node = node->next;
-	}
-
-	return a;
-}
-
-void *pmm_low_free_pages(void *address, size_t pages) {
-	struct ARC_BankNode *node = low_bank_meta->first;
-	void *a = NULL;
-	while (node != NULL && a == NULL) {
-		a = pfreelist_contig_free(node->allocator_meta, address, pages);
-		node = node->next;
-	}
-
-	return a;
-}
+// This is a pool of fast pages. When you need an O(1) allocation of a
+// the PAGE_SIZE, use this by calling pmm_fast_page_alloc and USE pmm_fast_page_free.
+// Fast pages is a non-contiguous freelist with an object size that of the smallest
+// power two page size
+struct ARC_PFreelistNode *fast_page_pool = NULL;
+static size_t fast_page_count = 0;
+static size_t fast_page_allocated = 0;
 
 void *pmm_alloc(size_t size) {
-	struct ARC_BankNode *node = high_contig_bank_meta->first;
-	void *a = NULL;
+       /*
+ * The order of operations is as follows:
+ *  1. Check for a freelist of that has the same block size as the requested
+ *     size
+ *     1.1 If such a list is found, preform a freelist allocation and return.
+ *         Otherwise proceed to 2
+ *  2. Fit the requested size to the next largest power two page size, and
+ *     find the first buddy allocator associated with this size (the buddy allocators are stored in a reverse linked list)
+ *     2.1 If an allocation is made with this buddy allocator, return.
+ *         Otherwise proceed to step 3
+ *  3. Choose to:
+ *      create a new buddy allocator (which can be done in constant time)
+ *      look for an existing buddy allocator that can make the allocation (done in linear time)
+ *      fail
+                */
 
-	while (node != NULL && a == NULL) {
-		a = vbuddy_alloc(node->allocator_meta, size);
-		node = node->next;
-	}
+        int size_exponent = __builtin_ctz(size);
+//        int size_bias_exponent = -1;
 
-	return a;
+        if (size_exponent == SMALLEST_PAGE_SIZE_EXPONENT) {
+                return pmm_fast_page_alloc();
+        }
+
+        if (pmm_freelists[size_exponent].head != NULL) {
+                return pfreelist_alloc(&pmm_freelists[size_exponent]);
+        }
+
+        SIZE_T_NEXT_POW2(size);
+
+        return NULL;
 }
 
 size_t pmm_free(void *address) {
-	struct ARC_BankNode *node = high_contig_bank_meta->first;
-	size_t size = 0;
+        if (address == NULL) {
+                return 0;
+        }
 
-	while (node != NULL && size == 0) {
-		size = vbuddy_free(node->allocator_meta, address);
-		node = node->next;
-	}
+        for (int i = 0; i < PMM_BIAS_COUNT; i++) {
+                int bias = pmm_bias_array[i];
 
-	return size;
+                if (pmm_freelists[bias].head != NULL && pfreelist_free(&pmm_freelists[bias], address) == address) {
+                        return (1 << bias);
+                }
+        }
+
+        pmm_fast_page_free(address);
+
+        return 0;
 }
 
-static uintptr_t pmm_convert_banks_to_hhdm() {
-	high_bank_meta = NULL; // (struct ARC_BankMeta *)ARC_PHYS_TO_HHDM(Arc_BootMeta->pmm_high_bank);
-	low_bank_meta = NULL; // (struct ARC_BankMeta *)ARC_PHYS_TO_HHDM(Arc_BootMeta->pmm_low_bank);
-
-	ARC_DEBUG(INFO, "Converting bootstrap allocator to use HHDM addresses\n");
-
-	struct ARC_BankNode *node = (struct ARC_BankNode *)ARC_PHYS_TO_HHDM(high_bank_meta->first);
-	high_bank_meta->first = node;
-
-	uintptr_t highest_ceil = 0;
-	while (node != NULL) {
-		struct ARC_PFreelistMeta *meta = (struct ARC_PFreelistMeta *)ARC_PHYS_TO_HHDM(node->allocator_meta);
-		node->allocator_meta = meta;
-
-		meta->base = (struct ARC_PFreelistNode *)ARC_PHYS_TO_HHDM(meta->base);
-		meta->ceil = (struct ARC_PFreelistNode *)ARC_PHYS_TO_HHDM(meta->ceil);
-
-		if ((uintptr_t)meta->ceil > highest_ceil) {
-			highest_ceil = (uintptr_t)meta->ceil;
-		}
-
-		if ((((uint64_t)meta->head) & UINT32_MAX) != 0) {
-			meta->head = (struct ARC_PFreelistNode *)ARC_PHYS_TO_HHDM(((uint64_t)meta->head) & UINT32_MAX);
-		}
-		
-		if (node->next != NULL) {
-			node->next = (struct ARC_BankNode *)ARC_PHYS_TO_HHDM(node->next);
-		}
-
-		node = node->next;
-	}
-
-	node = (struct ARC_BankNode *)ARC_PHYS_TO_HHDM(low_bank_meta->first);
-	low_bank_meta->first = node;
-
-	while (node != NULL) {
-		struct ARC_PFreelistMeta *meta = (struct ARC_PFreelistMeta *)ARC_PHYS_TO_HHDM(node->allocator_meta);
-		node->allocator_meta = meta;
-
-		meta->base = (struct ARC_PFreelistNode *)ARC_PHYS_TO_HHDM(meta->base);
-		meta->ceil = (struct ARC_PFreelistNode *)ARC_PHYS_TO_HHDM(meta->ceil);
-		
-		if ((((uint64_t)meta->head) & UINT32_MAX) != 0) {
-			meta->head = (struct ARC_PFreelistNode *)ARC_PHYS_TO_HHDM(((uint64_t)meta->head) & UINT32_MAX);
-		}
-		
-		if (node->next != NULL) {
-			node->next = (struct ARC_BankNode *)ARC_PHYS_TO_HHDM(node->next);
-		}
-
-		node = node->next;
-	}
-
-	return highest_ceil;
+size_t pmm_alloc_fast_pages(size_t count) {
+        fast_page_count += count;
+        return 0;
 }
 
-static int pmm_init_iallocator(int pages) {
-	return 0;
+void *pmm_fast_page_alloc() {
+        if (fast_page_count == fast_page_allocated) {
+                pmm_alloc_fast_pages(16);
+        }
+
+        ARC_ATOMIC_INC(fast_page_allocated);
+        void *a = fast_page_pool;
+        fast_page_pool = fast_page_pool->next;
+
+        return a;
 }
 
-static int pmm_convert_to_dynamic_banks() {
-	struct ARC_BankMeta *dynamic_high = init_bank(ARC_BANK_TYPE_PFREELIST, ARC_BANK_USE_ALLOC_INTERNAL);
-	
-	if (dynamic_high == NULL) {
-		ARC_DEBUG(ERR, "Failed to allocate high dynamic bank\n");
-		return -1;
-	}
+size_t pmm_fast_page_free(void *address) {
+        if (address == NULL) {
+                return 0;
+        }
 
-	struct ARC_BankMeta *dynamic_low = init_bank(ARC_BANK_TYPE_PFREELIST, ARC_BANK_USE_ALLOC_INTERNAL);
+        struct ARC_PFreelistNode *entry = (struct ARC_PFreelistNode *)address;
+        fast_page_pool = entry;
+        entry->next = fast_page_pool;
+        ARC_ATOMIC_DEC(fast_page_allocated);
 
-	if (dynamic_low == NULL) {
-		ARC_DEBUG(ERR, "Failed to allocate low dynamic bank\n");
-		// ifree(dynamic_high);
-		return -2;
-	}
-
-	struct ARC_BankNode *node = high_bank_meta->first;
-	while (node != NULL) {
-		bank_add(dynamic_high, node->allocator_meta);
-		node = node->next;
-	}
-
-	node = low_bank_meta->first;
-	while (node != NULL) {
-		bank_add(dynamic_low, node->allocator_meta);
-		node = node->next;
-	}
-
-	high_bank_meta = dynamic_high;
-	low_bank_meta = dynamic_low;
-
-	ARC_DEBUG(INFO, "Migrated banks to dynamic memory\n");
-
-	return 0;
+        return PAGE_SIZE;
 }
 
-static uintptr_t pmm_init_missed_memory(struct ARC_MMap *mmap, int entries, uintptr_t highest_ceil) {
-	ARC_DEBUG(INFO, "Initializing possibly missed memory:\n");
-	uintptr_t ret = highest_ceil;
-
-	for (int i = 0; i < entries; i++) {
-		struct ARC_MMap entry = mmap[i];
-
-		ARC_DEBUG(INFO, "\t%3d : 0x%016"PRIx64" -> 0x%016"PRIx64" (0x%016"PRIx64" bytes) | (%d)\n", i, entry.base, entry.base + entry.len, entry.len, entry.type);
-
-		if (ARC_PHYS_TO_HHDM(entry.base) < highest_ceil || entry.type != ARC_MEMORY_AVAILABLE) {
-			// Entry is below the highest allocation or it is not available
-			// then skip
-			continue;
-		}
-
-		ARC_DEBUG(INFO, "\t\tEntry is not in list, adding\n");
-
-		// Round up
-		uintptr_t base = ARC_PHYS_TO_HHDM(ALIGN(entry.base, PAGE_SIZE));
-		// Round down to page size
-		uintptr_t ceil = ARC_PHYS_TO_HHDM((entry.base + entry.len) & (~0xFFF));
-
-		if (ceil > ret) {
-			ret = ceil;
-		}
-
-		// Found a memory entry that is not yet in the allocator
-		struct ARC_PFreelistMeta *list = init_pfreelist(base, ceil, PAGE_SIZE);
-		bank_add(high_bank_meta, list);
-		
-		ARC_DEBUG(INFO, "\t\tAdded\n");
-	}
-
-	ARC_DEBUG(INFO, "Initialized possibly missed memory\n");
-
-	return ret;
+void *pmm_low_page_alloc() {
+        return NULL;
 }
 
-static int pmm_init_contiguous_high_memory() {
-	ARC_DEBUG(INFO, "Initializing contiguous memory regions\n");
+size_t pmm_low_page_free(void *address) {
+        return 0;
+}
 
-	high_contig_bank_meta = init_bank(ARC_BANK_TYPE_VBUDDY, ARC_BANK_USE_ALLOC_INTERNAL);
+static size_t watermark_size = 2 * PAGE_SIZE;
+static uintptr_t watermark_base = 0;
+static uintptr_t watermark_ceil = 0;
 
-	if (high_contig_bank_meta == NULL) {
-		ARC_DEBUG(ERR, "Failed to initialize dynamic bank for contiguous allocations\n");
-		return -1;
-	}
+static void *watermark_alloc(size_t size) {
+        if (watermark_base + size > watermark_ceil) {
+                ARC_DEBUG(ERR, "Overflow, can't rebase\n");
+                return NULL;
+        }
 
-	struct ARC_BankNode *node = high_bank_meta->first;
-	int count = 0;
+        void *a = (void *)watermark_base;
+        watermark_base += size;
+        return a;
+}
 
-	while (node != NULL) {
-		struct ARC_PFreelistMeta *freelist = node->allocator_meta;
+static int pmm_create_watermark(struct ARC_MMap *mmap, int entries) {
+        watermark_size += ALIGN(max_address_width * sizeof(struct ARC_PFreelist), PAGE_SIZE);
+        watermark_size += ALIGN(max_address_width * sizeof(void *), PAGE_SIZE);
 
-		size_t size = (freelist->free_objects * ARC_PMM_BUDDY_RATIO) * PAGE_SIZE;
-		SIZE_T_NEXT_POW2(size);
-		size >>= 1;
+        for (int i = 0; i < entries; i++) {
+                struct ARC_MMap entry = mmap[i];
 
-		void *base = pfreelist_contig_alloc(freelist, size / PAGE_SIZE);
+                if (entry.type != ARC_MEMORY_AVAILABLE && entry.len < watermark_size) {
+                        continue;
+                }
 
-		if (base == NULL) {
-			node = node->next;
-			continue;
-		}
+                watermark_base = ARC_PHYS_TO_HHDM(entry.base);
+                watermark_ceil = watermark_base + watermark_size;
 
-		struct ARC_VBuddyMeta *meta = NULL; // ialloc(sizeof(*meta));
+                if (entry.len == watermark_size) {
+                        mmap[i].type = ARC_MEMORY_RESERVED;
+                } else {
+                        mmap[i].base += watermark_size;
+                        mmap[i].len -= watermark_size;
+                }
 
-		if (meta == NULL) {
-			ARC_DEBUG(ERR, "\tFailed to allocate new contiguous meta\n");
-			break;
-		}
+                break;
+        }
 
-		// meta->ialloc = ialloc;
-		// meta->ifree = ifree;
+        ARC_DEBUG(INFO, "Initialized watermark allocator %p -> %p\n", watermark_base, watermark_ceil);
 
-		if (init_vbuddy(meta, base, size, PAGE_SIZE) != 0) {
-			ARC_DEBUG(ERR, "\tFailed to initialize bank\n");
-			return -2;
-		}
+        return (watermark_base == 0);
+}
 
-		// if (bank_add(high_contig_bank_meta, meta) == NULL) {
-		// 	ARC_DEBUG(ERR, "\tCould not insert into bank list\n");
-		// 	break;
-		// }
+static int pmm_create_freelists(struct ARC_MMap *mmap, int entries) {
+        int initialized = 0;
 
-		count++;
+        for (int i = 0; i < entries; i++) {
+                struct ARC_MMap entry = mmap[i];
 
-		node = node->next;
+                if (entry.type != ARC_MEMORY_AVAILABLE) {
+                        continue;
+                }
 
-		ARC_DEBUG(INFO, "\tInitialized bank at %p for %lu bytes\n", base, size);
-	}
+                uintptr_t base = ARC_PHYS_TO_HHDM(entry.base);
+                uintptr_t ceil = base + mmap[i].len;
+                uintptr_t len = entry.len;
 
-	return count;
+                ARC_DEBUG(INFO, "Found entry 0x%"PRIx64" -> 0x%"PRIx64" to initialize\n", base, ceil);
+
+                for (int j = 0; j < PMM_BIAS_COUNT; j++) {
+                        int bias = pmm_bias_array[j];
+                        size_t object_size = 1 << bias;
+
+                        if (mmap[i].len > pmm_bias_coeff_array[j] * object_size) {
+                                // Initialize list
+                                struct ARC_PFreelistMeta *meta = init_pfreelist(base, ceil - object_size, object_size);
+                                pfreelist_add(&pmm_freelists[bias], meta);
+
+                                base += len - object_size;
+                                len -= len - object_size;
+                        }
+                }
+
+                struct ARC_PFreelistNode *node = (struct ARC_PFreelistNode *)base;
+                for (; base < ceil; base += PAGE_SIZE) {
+                        node = (struct ARC_PFreelistNode *)base;
+                        node->next = (struct ARC_PFreelistNode *)(base + PAGE_SIZE);
+                }
+                fast_page_count += len >> SMALLEST_PAGE_SIZE_EXPONENT;
+
+                node->next = fast_page_pool;
+                fast_page_pool = node;
+
+                ARC_DEBUG(INFO, "\tInitialized 0x%"PRIx64" -> 0x%"PRIx64" as fast pages\n", base, ceil);
+
+                initialized++;
+        }
+
+        return initialized;
 }
 
 int init_pmm(struct ARC_MMap *mmap, int entries) {
-	ARC_DEBUG(INFO, "Setting up PMM\n");
+        if (mmap == NULL || entries == 0) {
+                ARC_DEBUG(ERR, "No memory map entries\n");
+                ARC_HANG;
+        }
 
-	if (mmap == NULL || entries == 0) {
-		ARC_DEBUG(ERR, "Failed to initialize 64-bit PMM (one or more are NULL: %p %d)\n", mmap, entries);
-		ARC_HANG;
-	}
+        ARC_DEBUG(INFO, "Initializing PMM\n");
 
-	uintptr_t highest_ceil = pmm_convert_banks_to_hhdm();
+        max_address_width = arch_physical_address_width();
 
-	if (highest_ceil == 0) {
-		ARC_DEBUG(ERR, "Conversion of banks to HHDM failed as the highest allocatable address is 0\n");
-		ARC_HANG;
-	}
+        if (pmm_create_watermark(mmap, entries) != 0) {
+                ARC_DEBUG(ERR, "Failed to create watermark allocator\n");
+                ARC_HANG;
+        }
 
-	ARC_DEBUG(INFO, "Highest allocatable address: 0x%"PRIx64"\n", highest_ceil);
+        pmm_freelists = watermark_alloc(max_address_width * sizeof(struct ARC_PFreelist));
+        memset(pmm_freelists, 0, max_address_width * sizeof(struct ARC_PFreelist));
+        pmm_buddies = watermark_alloc(max_address_width * sizeof(void *));
+        memset(pmm_freelists, 0, max_address_width * sizeof(void *));
 
-	if (pmm_init_iallocator(256) != 0) {
-		ARC_DEBUG(ERR, "Failed to initialize internal allocator\n");
-		ARC_HANG;
-	}
-	ARC_DEBUG(INFO, "Initialized internal allocator\n");
+        if (pmm_create_freelists(mmap, entries) == 0) {
+                ARC_DEBUG(ERR, "Failed to create freelists\n");
+                ARC_HANG;
+        }
 
-	if (pmm_convert_to_dynamic_banks() != 0) {
-		ARC_DEBUG(ERR, "Failed to convert to dynamic banks\n");
-		ARC_HANG;
-	}
-
-	highest_ceil = pmm_init_missed_memory(mmap,entries, highest_ceil);
-
-	ARC_DEBUG(INFO, "Highest allocatable address: 0x%"PRIx64"\n", highest_ceil);
-
-	if (pmm_init_contiguous_high_memory() <= 0) {
-		ARC_DEBUG(ERR, "Failed to initialize contiguous memory regions in high memory\n");
-		ARC_HANG;
-	}
-
-	ARC_DEBUG(INFO, "Finished setting up PMM\n");
-
-	return 0;
+        return 0;
 }

@@ -29,25 +29,16 @@
 
 #include <global.h>
 
-// These functions return virtual addresses, but ARC_HHDM_TO_PHYS can be used on them
-// to convert them to physical addresses
-
-// These functions use the freelists
-void *pmm_alloc_page();
-void *pmm_free_page(void *address);
-void *pmm_alloc_pages(size_t pages);
-void *pmm_free_pages(void *address, size_t pages);
-
-void *pmm_low_alloc_page();
-void *pmm_low_free_page(void *address);
-void *pmm_low_alloc_pages(size_t pages);
-void *pmm_low_free_pages(void *address, size_t pages);
-
-// These functions use the vbuddies
 void *pmm_alloc(size_t size);
 size_t pmm_free(void *address);
 
-int init_pmm_contig();
+size_t pmm_alloc_fast_pages(size_t count);
+void *pmm_fast_page_alloc();
+size_t pmm_fast_page_free(void *address);
+
+void *pmm_low_page_alloc();
+size_t pmm_low_page_free(void *address);
+
 int init_pmm(struct ARC_MMap *mmap, int entries);
 
 #endif
