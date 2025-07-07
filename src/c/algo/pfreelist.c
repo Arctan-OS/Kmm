@@ -134,7 +134,7 @@ struct ARC_PFreelistMeta *init_pfreelist(uintptr_t _base, uintptr_t _ceil, size_
 	meta->ceil = ceil;
 	meta->free_objects = (_ceil - _base) / _object_size - objects + 1;
 
-	ARC_DEBUG(INFO, "Creating pfreelist from %p to %p with %lu byte objects\n", base, ceil, _object_size);
+	ARC_DEBUG(INFO, "Creating pfreelist from %p to %p with %lu byte objects (%lu objects)\n", base, ceil, _object_size, meta->free_objects);
 
 	// Initialize the linked list
 	struct ARC_PFreelistNode *current = NULL;

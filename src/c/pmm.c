@@ -81,21 +81,22 @@
  *
  *  This is because the freelist allocator will always be much faster than the buddy allocator.
 */
+#include <mm/algo/pbuddy.h>
 #include <arch/info.h>
 #include <mm/pmm.h>
 #include <arch/x86-64/config.h>
 #include <global.h>
 #include <lib/util.h>
 #include <mm/algo/pfreelist.h>
+#include <stdint.h>
 
-static int pmm_bias_array[] = { PMM_BIAS_ARRAY };
-static int pmm_bias_coeff_array[] = { PMM_BIAS_COEFF };
-
-
+static const int pmm_bias_array[] = { PMM_BIAS_ARRAY };
+static const uintmax_t pmm_bias_low[] = { PMM_BIAS_LOW };
+static const uintmax_t pmm_bias_ratio[] = { PMM_BIAS_RATIO };
 
 static uint32_t max_address_width = 0;
 static struct ARC_PFreelist *pmm_freelists = NULL;
-static void *pmm_buddies = NULL;
+static struct ARC_PBuddy *pmm_buddies = NULL;
 
 // This is a pool of fast pages. When you need an O(1) allocation of a
 // the PAGE_SIZE, use this by calling pmm_fast_page_alloc and USE pmm_fast_page_free.
@@ -106,22 +107,6 @@ static size_t fast_page_count = 0;
 static size_t fast_page_allocated = 0;
 
 void *pmm_alloc(size_t size) {
-       /*
- * The order of operations is as follows:
- *  1. Check for a freelist of that has the same block size as the requested
- *     size
- *     1.1 If such a list is found, preform a freelist allocation and return.
- *         Otherwise proceed to 2
- *  2. Fit the requested size to the next largest power two page size, and
- *     find the first buddy allocator associated with this size (the buddy allocators are stored in a reverse linked list)
- *     2.1 If an allocation is made with this buddy allocator, return.
- *         Otherwise proceed to step 3
- *  3. Choose to:
- *      create a new buddy allocator (which can be done in constant time)
- *      look for an existing buddy allocator that can make the allocation (done in linear time)
- *      fail
-                */
-
         int size_exponent = __builtin_ctz(size);
 //        int size_bias_exponent = -1;
 
@@ -134,6 +119,8 @@ void *pmm_alloc(size_t size) {
         }
 
         SIZE_T_NEXT_POW2(size);
+
+
 
         return NULL;
 }
@@ -198,20 +185,9 @@ static size_t watermark_size = 2 * PAGE_SIZE;
 static uintptr_t watermark_base = 0;
 static uintptr_t watermark_ceil = 0;
 
-static void *watermark_alloc(size_t size) {
-        if (watermark_base + size > watermark_ceil) {
-                ARC_DEBUG(ERR, "Overflow, can't rebase\n");
-                return NULL;
-        }
-
-        void *a = (void *)watermark_base;
-        watermark_base += size;
-        return a;
-}
-
 static int pmm_create_watermark(struct ARC_MMap *mmap, int entries) {
         watermark_size += ALIGN(max_address_width * sizeof(struct ARC_PFreelist), PAGE_SIZE);
-        watermark_size += ALIGN(max_address_width * sizeof(void *), PAGE_SIZE);
+        watermark_size += ALIGN(max_address_width * sizeof(struct ARC_PBuddy), PAGE_SIZE);
 
         for (int i = 0; i < entries; i++) {
                 struct ARC_MMap entry = mmap[i];
@@ -238,6 +214,17 @@ static int pmm_create_watermark(struct ARC_MMap *mmap, int entries) {
         return (watermark_base == 0);
 }
 
+static void *watermark_alloc(size_t size) {
+        if (watermark_base + size > watermark_ceil) {
+                ARC_DEBUG(ERR, "Overflow, can't rebase\n");
+                return NULL;
+        }
+
+        void *a = (void *)watermark_base;
+        watermark_base += size;
+        return a;
+}
+
 static int pmm_create_freelists(struct ARC_MMap *mmap, int entries) {
         int initialized = 0;
 
@@ -255,17 +242,51 @@ static int pmm_create_freelists(struct ARC_MMap *mmap, int entries) {
                 ARC_DEBUG(INFO, "Found entry 0x%"PRIx64" -> 0x%"PRIx64" to initialize\n", base, ceil);
 
                 for (int j = 0; j < PMM_BIAS_COUNT; j++) {
+                        if (pmm_bias_ratio[j] == 0) {
+                                continue;
+                        }
+
                         int bias = pmm_bias_array[j];
                         size_t object_size = 1 << bias;
 
-                        if (mmap[i].len > pmm_bias_coeff_array[j] * object_size) {
-                                // Initialize list
-                                struct ARC_PFreelistMeta *meta = init_pfreelist(base, ceil - object_size, object_size);
-                                pfreelist_add(&pmm_freelists[bias], meta);
-
-                                base += len - object_size;
-                                len -= len - object_size;
+                        if (len < pmm_bias_low[j] * object_size) {
+                                continue;
                         }
+
+                        // Initialize list
+                        size_t range_len = ALIGN(len * pmm_bias_ratio[j] / PMM_BIAS_DENOMINATOR, object_size);
+                        if (range_len > len) {
+                                range_len = (len >> bias) << bias;
+                        }
+                        struct ARC_PFreelistMeta *meta = init_pfreelist(base, base + range_len, object_size);
+                        pfreelist_add(&pmm_freelists[bias], meta);
+
+                        base += range_len;
+                        len -= range_len;
+                }
+
+                for (int j = 0; j < PMM_BIAS_COUNT; j++) {
+                        if (pmm_bias_ratio[j] != 0) {
+                                continue;
+                        }
+
+                        int bias = pmm_bias_array[j];
+                        size_t object_size = 1 << bias;
+
+                        if (len < pmm_bias_low[j] * object_size) {
+                                continue;
+                        }
+
+                        // Initialize list
+                        size_t range_len = ALIGN(len - object_size, object_size);
+                        if (range_len > len) {
+                                range_len = (len >> bias) << bias;
+                        }
+                        struct ARC_PFreelistMeta *meta = init_pfreelist(base, base + range_len, object_size);
+                        pfreelist_add(&pmm_freelists[bias], meta);
+
+                        base += range_len;
+                        len -= range_len;
                 }
 
                 struct ARC_PFreelistNode *node = (struct ARC_PFreelistNode *)base;
