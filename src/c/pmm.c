@@ -81,6 +81,7 @@
  *
  *  This is because the freelist allocator will always be much faster than the buddy allocator.
 */
+#include "util.h"
 #include <mm/algo/pbuddy.h>
 #include <arch/info.h>
 #include <mm/pmm.h>
@@ -88,13 +89,19 @@
 #include <global.h>
 #include <lib/util.h>
 #include <mm/algo/pfreelist.h>
+#include <mm/algo/vwatermark.h>
 #include <stdint.h>
 
-static const int pmm_bias_array[] = { PMM_BIAS_ARRAY };
+static const uint32_t pmm_bias_array[] = { PMM_BIAS_ARRAY };
 static const uintmax_t pmm_bias_low[] = { PMM_BIAS_LOW };
-static const uintmax_t pmm_bias_ratio[] = { PMM_BIAS_RATIO };
+static const uint32_t pmm_bias_ratio[] = { PMM_BIAS_RATIO };
+static uint32_t pmm_bias_count = sizeof(pmm_bias_array) / sizeof(uint32_t);
+
+STATIC_ASSERT(sizeof(pmm_bias_array) / sizeof(uint32_t) == sizeof(pmm_bias_low) / sizeof(uintmax_t), "The number of bias array elements is not equal to the number bias low elements!");
+STATIC_ASSERT(sizeof(pmm_bias_array) / sizeof(uint32_t) == sizeof(pmm_bias_ratio) / sizeof(uint32_t), "The number of bias array elements is not equal to the number of bias ratio elements!");
 
 static uint32_t max_address_width = 0;
+static struct ARC_VWatermarkMeta pmm_init_alloc = { 0 };
 static struct ARC_PFreelist *pmm_freelists = NULL;
 static struct ARC_PBuddy *pmm_buddies = NULL;
 
@@ -120,8 +127,6 @@ void *pmm_alloc(size_t size) {
 
         SIZE_T_NEXT_POW2(size);
 
-
-
         return NULL;
 }
 
@@ -130,7 +135,7 @@ size_t pmm_free(void *address) {
                 return 0;
         }
 
-        for (int i = 0; i < PMM_BIAS_COUNT; i++) {
+        for (int i = 0; i < pmm_bias_count; i++) {
                 int bias = pmm_bias_array[i];
 
                 if (pmm_freelists[bias].head != NULL && pfreelist_free(&pmm_freelists[bias], address) == address) {
@@ -181,50 +186,6 @@ size_t pmm_low_page_free(void *address) {
         return 0;
 }
 
-static size_t watermark_size = 2 * PAGE_SIZE;
-static uintptr_t watermark_base = 0;
-static uintptr_t watermark_ceil = 0;
-
-static int pmm_create_watermark(struct ARC_MMap *mmap, int entries) {
-        watermark_size += ALIGN(max_address_width * sizeof(struct ARC_PFreelist), PAGE_SIZE);
-        watermark_size += ALIGN(max_address_width * sizeof(struct ARC_PBuddy), PAGE_SIZE);
-
-        for (int i = 0; i < entries; i++) {
-                struct ARC_MMap entry = mmap[i];
-
-                if (entry.type != ARC_MEMORY_AVAILABLE && entry.len < watermark_size) {
-                        continue;
-                }
-
-                watermark_base = ARC_PHYS_TO_HHDM(entry.base);
-                watermark_ceil = watermark_base + watermark_size;
-
-                if (entry.len == watermark_size) {
-                        mmap[i].type = ARC_MEMORY_RESERVED;
-                } else {
-                        mmap[i].base += watermark_size;
-                        mmap[i].len -= watermark_size;
-                }
-
-                break;
-        }
-
-        ARC_DEBUG(INFO, "Initialized watermark allocator %p -> %p\n", watermark_base, watermark_ceil);
-
-        return (watermark_base == 0);
-}
-
-static void *watermark_alloc(size_t size) {
-        if (watermark_base + size > watermark_ceil) {
-                ARC_DEBUG(ERR, "Overflow, can't rebase\n");
-                return NULL;
-        }
-
-        void *a = (void *)watermark_base;
-        watermark_base += size;
-        return a;
-}
-
 static int pmm_create_freelists(struct ARC_MMap *mmap, int entries) {
         int initialized = 0;
 
@@ -241,7 +202,7 @@ static int pmm_create_freelists(struct ARC_MMap *mmap, int entries) {
 
                 ARC_DEBUG(INFO, "Found entry 0x%"PRIx64" -> 0x%"PRIx64" to initialize\n", base, ceil);
 
-                for (int j = 0; j < PMM_BIAS_COUNT; j++) {
+                for (int j = 0; j < pmm_bias_count; j++) {
                         if (pmm_bias_ratio[j] == 0) {
                                 continue;
                         }
@@ -265,7 +226,7 @@ static int pmm_create_freelists(struct ARC_MMap *mmap, int entries) {
                         len -= range_len;
                 }
 
-                for (int j = 0; j < PMM_BIAS_COUNT; j++) {
+                for (int j = 0; j < pmm_bias_count; j++) {
                         if (pmm_bias_ratio[j] != 0) {
                                 continue;
                         }
@@ -313,19 +274,51 @@ int init_pmm(struct ARC_MMap *mmap, int entries) {
                 ARC_HANG;
         }
 
-        ARC_DEBUG(INFO, "Initializing PMM\n");
-
         max_address_width = arch_physical_address_width();
 
-        if (pmm_create_watermark(mmap, entries) != 0) {
-                ARC_DEBUG(ERR, "Failed to create watermark allocator\n");
+        ARC_DEBUG(INFO, "Initializing PMM (%lu bit)\n", max_address_width);
+
+        if (max_address_width < pmm_bias_count) {
+                ARC_DEBUG(ERR, "More biases than address width, only using first %lu biases\n", max_address_width);
+                ARC_DEBUG(WARN, "Ignoring %lu biases\n", pmm_bias_count - max_address_width);
+                pmm_bias_count = max_address_width;
+        }
+
+        uintptr_t watermark_base = 0;
+
+        size_t watermark_size = 2 * PAGE_SIZE;
+        size_t pfreelist_size = max_address_width * sizeof(struct ARC_PFreelist);
+        size_t pbuddy_size = max_address_width * sizeof(struct ARC_PBuddy);
+        watermark_size += ALIGN(pfreelist_size, PAGE_SIZE);
+        watermark_size += ALIGN(pbuddy_size, PAGE_SIZE);
+
+        for (int i = 0; i < entries; i++) {
+                struct ARC_MMap entry = mmap[i];
+
+                if (entry.type != ARC_MEMORY_AVAILABLE && entry.len < watermark_size) {
+                        continue;
+                }
+
+                watermark_base = ARC_PHYS_TO_HHDM(entry.base);
+
+                if (entry.len == watermark_size) {
+                        mmap[i].type = ARC_MEMORY_RESERVED;
+                } else {
+                        mmap[i].base += watermark_size;
+                        mmap[i].len -= watermark_size;
+                }
+
+                break;
+        }
+
+        if (init_vwatermark(&pmm_init_alloc, watermark_base, watermark_size) != 0) {
                 ARC_HANG;
         }
 
-        pmm_freelists = watermark_alloc(max_address_width * sizeof(struct ARC_PFreelist));
-        memset(pmm_freelists, 0, max_address_width * sizeof(struct ARC_PFreelist));
-        pmm_buddies = watermark_alloc(max_address_width * sizeof(void *));
-        memset(pmm_freelists, 0, max_address_width * sizeof(void *));
+        pmm_freelists = vwatermark_alloc(&pmm_init_alloc, pfreelist_size);
+        memset(pmm_freelists, 0, pfreelist_size);
+        pmm_buddies = vwatermark_alloc(&pmm_init_alloc, pbuddy_size);
+        memset(pmm_freelists, 0, pbuddy_size);
 
         if (pmm_create_freelists(mmap, entries) == 0) {
                 ARC_DEBUG(ERR, "Failed to create freelists\n");
