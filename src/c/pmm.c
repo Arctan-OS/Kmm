@@ -114,8 +114,8 @@ static size_t fast_page_count = 0;
 static size_t fast_page_allocated = 0;
 
 void *pmm_alloc(size_t size) {
-        int size_exponent = __builtin_ctz(size);
-//        int size_bias_exponent = -1;
+        SIZE_T_NEXT_POW2(size);
+        uint32_t size_exponent = __builtin_ctz(size);
 
         if (size_exponent == SMALLEST_PAGE_SIZE_EXPONENT) {
                 return pmm_fast_page_alloc();
@@ -125,7 +125,32 @@ void *pmm_alloc(size_t size) {
                 return pfreelist_alloc(&pmm_freelists[size_exponent]);
         }
 
-        SIZE_T_NEXT_POW2(size);
+        uint32_t i = 0;
+        uint32_t t_size_exp = UINT32_MAX;
+        for (; i < pmm_bias_count; i++) {
+                if (pmm_bias_array[i] < t_size_exp && t_size_exp > size_exponent) {
+                        t_size_exp = pmm_bias_array[i];
+                }
+        }
+
+        if (pmm_buddies[t_size_exp].head == NULL) {
+                uintptr_t base = (uintptr_t)pfreelist_alloc(&pmm_freelists[t_size_exp]);
+
+                if (base == 0) {
+                        goto get_more_mem;
+                }
+
+                if (init_pbuddy(&pmm_buddies[t_size_exp], base, t_size_exp) != 0) {
+                        goto get_more_mem;
+                }
+        }
+
+        return pbuddy_alloc(&pmm_buddies[i], size);
+
+        get_more_mem:;
+        ARC_DEBUG(ERR, "Failed to allocate %lu bytes of memory!\n", size);
+        ARC_HANG; // TODO: Add code to reclaim unused bits of memory to attempt
+                  //       fulfill allocation.
 
         return NULL;
 }
@@ -135,11 +160,16 @@ size_t pmm_free(void *address) {
                 return 0;
         }
 
-        for (int i = 0; i < pmm_bias_count; i++) {
+        for (uint32_t i = 0; i < pmm_bias_count; i++) {
                 int bias = pmm_bias_array[i];
 
-                if (pmm_freelists[bias].head != NULL && pfreelist_free(&pmm_freelists[bias], address) == address) {
+                if (pfreelist_free(&pmm_freelists[bias], address) == address) {
                         return (1 << bias);
+                }
+
+                size_t s = pbuddy_free(&pmm_buddies[bias], address);
+                if (s > 0) {
+                        return s;
                 }
         }
 
@@ -219,8 +249,10 @@ static int pmm_create_freelists(struct ARC_MMap *mmap, int entries) {
                         if (range_len > len) {
                                 range_len = (len >> bias) << bias;
                         }
-                        struct ARC_PFreelistMeta *meta = init_pfreelist(base, base + range_len, object_size);
-                        pfreelist_add(&pmm_freelists[bias], meta);
+
+                        if (init_pfreelist(&pmm_freelists[bias], base, base + range_len, object_size) != 0) {
+                                ARC_DEBUG(ERR, "Failed to initialize\n");
+                        }
 
                         base += range_len;
                         len -= range_len;
@@ -243,8 +275,10 @@ static int pmm_create_freelists(struct ARC_MMap *mmap, int entries) {
                         if (range_len > len) {
                                 range_len = (len >> bias) << bias;
                         }
-                        struct ARC_PFreelistMeta *meta = init_pfreelist(base, base + range_len, object_size);
-                        pfreelist_add(&pmm_freelists[bias], meta);
+
+                        if (init_pfreelist(&pmm_freelists[bias], base, base + range_len, object_size) != 0) {
+                                ARC_DEBUG(ERR, "Failed to initalize\n");
+                        }
 
                         base += range_len;
                         len -= range_len;
@@ -318,7 +352,7 @@ int init_pmm(struct ARC_MMap *mmap, int entries) {
         pmm_freelists = vwatermark_alloc(&pmm_init_alloc, pfreelist_size);
         memset(pmm_freelists, 0, pfreelist_size);
         pmm_buddies = vwatermark_alloc(&pmm_init_alloc, pbuddy_size);
-        memset(pmm_freelists, 0, pbuddy_size);
+        memset(pmm_buddies, 0, pbuddy_size);
 
         if (pmm_create_freelists(mmap, entries) == 0) {
                 ARC_DEBUG(ERR, "Failed to create freelists\n");

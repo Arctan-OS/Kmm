@@ -31,42 +31,43 @@
 #include <stdint.h>
 #include <stddef.h>
 #include <lib/atomics.h>
+#include <mm/algo/pfreelist.h>
 
 #define PBUDDY_CANARY_LOW 0x0
 #define PBUDDY_CANARY_HIGH 0x0
 
 struct ARC_PBuddyNode {
         uint64_t canary_low;
-	struct ARC_PFreelistNode *next;
-        size_t size;
+	struct ARC_PBuddyNode *next;
         uint64_t canary_high;
 }__attribute__((packed));
 
 struct ARC_PBuddyMeta {
 	/// Next meta
-	struct ARC_PFreelistMeta *next;
+	struct ARC_PBuddyMeta *next;
 	/// First node.
-	struct ARC_PFreelistNode *base;
-	/// Last node.
-	struct ARC_PFreelistNode *ceil;
+        uintptr_t base;
 	/// Number of free objects in this meta.
 	size_t free_objects;
+
+        uint32_t full_exp;
 	/// Lock for everything.
 	ARC_GenericSpinlock lock;
         struct ARC_PBuddyNode *nodes[];
-}__attribute__((packed));
+};
 
 struct ARC_PBuddy {
 	struct ARC_PBuddyMeta *head;
+        struct ARC_PFreelist meta_tables;
+        ARC_GenericSpinlock order_lock;
 };
 
 void *pbuddy_alloc(struct ARC_PBuddy *list, size_t size);
 
-void *pbuddy_free(struct ARC_PBuddy *list, void *address);
+size_t pbuddy_free(struct ARC_PBuddy *list, void *address);
 
-int pbuddy_add(struct ARC_PBuddy *list, struct ARC_PBuddyMeta *meta);
 int pbuddy_remove(struct ARC_PBuddy *list, struct ARC_PBuddyMeta *meta);
 
-struct ARC_PBuddyMeta *init_pbuddy(uintptr_t _base, uintptr_t _ceil);
+int init_pbuddy(struct ARC_PBuddy *list, uintptr_t _base, uint32_t full_exp);
 
 #endif

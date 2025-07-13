@@ -94,7 +94,8 @@ int pslab_expand(struct ARC_PSlabMeta *pslab, size_t pages) {
 
 void *init_pslab(struct ARC_PSlabMeta *meta, void *range, size_t range_size) {
 	ARC_DEBUG(INFO, "Initializing SLAB allocator in range %p (%lu)\n", range, range_size);
-
+/*
+**
 	size_t partition_size = range_size >> 3;
 	size_t object_size = SMALLEST_SIZE;
 	uint64_t base = (uint64_t)range;
@@ -110,6 +111,7 @@ void *init_pslab(struct ARC_PSlabMeta *meta, void *range, size_t range_size) {
 	meta->range_length = range_size;
 
 	ARC_DEBUG(INFO, "Initialized SLAB allocator\n");
-
 	return (void *)base;
+ */
+	return NULL;
 }

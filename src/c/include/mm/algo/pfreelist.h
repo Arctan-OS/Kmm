@@ -56,6 +56,7 @@ struct ARC_PFreelistMeta {
 
 struct ARC_PFreelist {
 	struct ARC_PFreelistMeta *head;
+	ARC_GenericSpinlock ordering_lock;
 };
 
 /**
@@ -75,8 +76,6 @@ void *pfreelist_alloc(struct ARC_PFreelist *list);
  * */
 void *pfreelist_free(struct ARC_PFreelist *list, void *address);
 
-int pfreelist_add(struct ARC_PFreelist *list, struct ARC_PFreelistMeta *meta);
-
 /**
  * Initialize the given memory as a pfreelist.
  *
@@ -85,6 +84,6 @@ int pfreelist_add(struct ARC_PFreelist *list, struct ARC_PFreelistMeta *meta);
  * @param size_t _object_size - The size of each object in bytes.
  * @return returns the pointer to the pfreelist meta (_base == return value).
  * */
-struct ARC_PFreelistMeta *init_pfreelist(uintptr_t _base, uintptr_t _ceil, size_t _object_size);
+int init_pfreelist(struct ARC_PFreelist *list, uintptr_t _base, uintptr_t _ceil, size_t _object_size);
 
 #endif
