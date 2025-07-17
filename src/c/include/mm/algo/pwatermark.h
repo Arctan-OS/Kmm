@@ -1,5 +1,5 @@
 /**
- * @file vwatermark.h
+ * @file pwatermark.h
  *
  * @author awewsomegamer <awewsomegamer@gmail.com>
  *
@@ -24,26 +24,26 @@
  *
  * @DESCRIPTION
 */
-#ifndef ARC_MM_ALGO_VWATERMARK_H
-#define ARC_MM_ALGO_VWATERMARK_H
+#ifndef ARC_MM_ALGO_PWATERMARK_H
+#define ARC_MM_ALGO_PWATERMARK_H
 
 #include "lib/atomics.h"
 #include <stddef.h>
 #include <stdint.h>
 
-struct ARC_VWatermarkMeta {
-        struct ARC_VWatermarkMeta *next;
+struct ARC_PWatermarkMeta {
+        struct ARC_PWatermarkMeta *next;
         uintptr_t base;
         uintptr_t ceil;
         size_t off;
 };
 
-struct ARC_VWatermark {
-        struct ARC_VWatermarkMeta *head;
+struct ARC_PWatermark {
+        struct ARC_PWatermarkMeta *head;
         ARC_GenericSpinlock order_lock;
 };
 
-void *vwatermark_alloc(struct ARC_VWatermark *list, size_t size);
-int init_vwatermark(struct ARC_VWatermark *list, struct ARC_VWatermarkMeta *meta, uintptr_t base, size_t len);
+void *pwatermark_alloc(struct ARC_PWatermark *list, size_t size);
+int init_pwatermark(struct ARC_PWatermark *list, uintptr_t base, size_t len);
 
 #endif

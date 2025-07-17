@@ -1,5 +1,5 @@
 /**
- * @file vwatermark.c
+ * @file pwatermark.c
  *
  * @author awewsomegamer <awewsomegamer@gmail.com>
  *
@@ -24,17 +24,17 @@
  *
  * @DESCRIPTION
 */
-#include <mm/algo/vwatermark.h>
+#include <mm/algo/pwatermark.h>
 #include <global.h>
 
-void *vwatermark_alloc(struct ARC_VWatermark *list, size_t size) {
+void *pwatermark_alloc(struct ARC_PWatermark *list, size_t size) {
         if (list == NULL  || list->head == NULL || size == 0) {
                 return NULL;
         }
 
         spinlock_lock(&list->order_lock);
 
-        struct ARC_VWatermarkMeta *current = list->head;
+        struct ARC_PWatermarkMeta *current = list->head;
         while (current != NULL && current->base + current->off + size > current->ceil) {
                 current = current->next;
         }
@@ -52,19 +52,20 @@ void *vwatermark_alloc(struct ARC_VWatermark *list, size_t size) {
         return a;
 }
 
-int init_vwatermark(struct ARC_VWatermark *list, struct ARC_VWatermarkMeta *meta, uintptr_t base, size_t len) {
-        if (meta == NULL || base == 0 || len == 0) {
-                ARC_DEBUG(ERR, "No meta provided, allocator at NULL, or of zero length\n");
+int init_pwatermark(struct ARC_PWatermark *list, uintptr_t base, size_t len) {
+        if (list == NULL || base == 0 || len == 0) {
                 return -1;
         }
 
-        meta->base = base;
-        meta->ceil = base + len;
+        struct ARC_PWatermarkMeta *meta = (struct ARC_PWatermarkMeta *)base;
+
+        meta->base = base + sizeof(*meta);
+        meta->ceil = meta->base + len - sizeof(*meta);
         meta->off = 0;
 
         ARC_ATOMIC_XCHG(&list->head, &meta, &meta->next);
 
-        ARC_DEBUG(INFO, "Initialized vwatermark allocator at 0x%"PRIx64" to 0x%"PRIx64"\n", meta->base, meta->ceil);
+        ARC_DEBUG(INFO, "Initialized pwatermark allocator at 0x%"PRIx64" to 0x%"PRIx64"\n", meta->base, meta->ceil);
 
         return 0;
 }
