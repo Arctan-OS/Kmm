@@ -27,12 +27,12 @@
 #ifndef ARC_MM_VMM_H
 #define ARC_MM_VMM_H
 
-#include <mm/algo/vbuddy.h>
+#include <mm/algo/pbuddy.h>
 #include <stddef.h>
 
 // TODO: Is this really the best way to do this?
 struct ARC_VMMMeta {
-        struct ARC_VBuddyMeta buddy;
+        struct ARC_PBuddyMeta buddy;
 };
 
 void *vmm_alloc(struct ARC_VMMMeta *meta, size_t size);

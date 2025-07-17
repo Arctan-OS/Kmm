@@ -33,13 +33,26 @@
 #include <lib/atomics.h>
 #include <mm/algo/pfreelist.h>
 
-#define PBUDDY_CANARY_LOW 0x0
-#define PBUDDY_CANARY_HIGH 0x0
+// NOTE: Canaries can be used to signal the state of the
+//       node. The bit 0 can be designated as the signal
+//       bit and can be changed atomically through the use
+//       of ARC_ATOMIC_INC / DEC with release semantics.
+//       For instance, bit 0 on the LOW canary can be used
+//       to signify an operation is being preformed on the
+//       node.
+
+#define ARC_PBUDDY_CANARY_LOW 0x0
+#define ARC_PBUDDY_CANARY_HIGH 0x0
 
 struct ARC_PBuddyNode {
-        uint64_t canary_low;
-	struct ARC_PBuddyNode *next;
-        uint64_t canary_high;
+        size_t canary_low;
+        struct ARC_PBuddyNode *next;
+        uint32_t canary_high;
+}__attribute__((packed));
+
+struct ARC_PBuddyNodeMeta {
+        int exp;
+        uint32_t resv0;
 }__attribute__((packed));
 
 struct ARC_PBuddyMeta {
@@ -49,16 +62,17 @@ struct ARC_PBuddyMeta {
         uintptr_t base;
 	/// Number of free objects in this meta.
 	size_t free_objects;
-
-        uint32_t full_exp;
 	/// Lock for everything.
+	int exp;
 	ARC_GenericSpinlock lock;
-        struct ARC_PBuddyNode *nodes[];
+        struct ARC_PBuddyNodeMeta *node_metas; // (1 << (ARC_VBuddy.exp - PMM_BUDDY_LOWEST_EXPONENT)) nodes
+        struct ARC_PBuddyNode *free[];
 };
 
 struct ARC_PBuddy {
 	struct ARC_PBuddyMeta *head;
-        struct ARC_PFreelist meta_tables;
+        struct ARC_PFreelist metas;
+        int exp;
         ARC_GenericSpinlock order_lock;
 };
 
@@ -68,6 +82,6 @@ size_t pbuddy_free(struct ARC_PBuddy *list, void *address);
 
 int pbuddy_remove(struct ARC_PBuddy *list, struct ARC_PBuddyMeta *meta);
 
-int init_pbuddy(struct ARC_PBuddy *list, uintptr_t _base, uint32_t full_exp);
+int init_pbuddy(struct ARC_PBuddy *list, uintptr_t _base, int full_exp);
 
 #endif

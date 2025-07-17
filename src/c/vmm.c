@@ -30,30 +30,40 @@
 #include <lib/util.h>
 
 void *vmm_alloc(struct ARC_VMMMeta *meta, size_t size) {
+        /*
         if (size == 0 || meta == NULL) {
                 return NULL;
         }
 
         return vbuddy_alloc(&meta->buddy, size);
+        */
+        return NULL;
 }
 
 size_t vmm_free(struct ARC_VMMMeta *meta, void *address) {
+        /*
         if (meta == NULL) {
                 return 0;
         }
         
         return vbuddy_free(&meta->buddy, address);
+        */
+        return 0;
 }
 
 size_t vmm_len(struct ARC_VMMMeta *meta, void *address) {
+        /*
         if (meta == NULL) {
                 return 0;
         }
 
         return vbuddy_len(&meta->buddy, address);
+        */
+        return 0;
 }
 
 struct ARC_VMMMeta *init_vmm(void *base, size_t size) {
+        /*
         struct ARC_VMMMeta *meta = (struct ARC_VMMMeta *)alloc(sizeof(*meta));
 
         if (meta == NULL) {
@@ -73,4 +83,6 @@ struct ARC_VMMMeta *init_vmm(void *base, size_t size) {
         }
 
         return meta;
+        */
+        return NULL;
 }
