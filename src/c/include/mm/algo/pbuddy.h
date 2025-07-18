@@ -64,6 +64,7 @@ struct ARC_PBuddyMeta {
 	size_t free_objects;
 	/// Lock for everything.
 	int exp;
+        int min_exp;
 	ARC_GenericSpinlock lock;
         struct ARC_PBuddyNodeMeta *node_metas; // (1 << (ARC_VBuddy.exp - PMM_BUDDY_LOWEST_EXPONENT)) nodes
         struct ARC_PBuddyNode *free[];
@@ -73,6 +74,7 @@ struct ARC_PBuddy {
 	struct ARC_PBuddyMeta *head;
         struct ARC_PFreelist metas;
         int exp;
+        int min_exp;
         ARC_GenericSpinlock order_lock;
 };
 
@@ -82,6 +84,6 @@ size_t pbuddy_free(struct ARC_PBuddy *list, void *address);
 
 int pbuddy_remove(struct ARC_PBuddy *list, struct ARC_PBuddyMeta *meta);
 
-int init_pbuddy(struct ARC_PBuddy *list, uintptr_t _base, int full_exp);
+int init_pbuddy(struct ARC_PBuddy *list, uintptr_t _base, int exp, int min_exp);
 
 #endif

@@ -81,6 +81,7 @@
  *
  *  This is because the freelist allocator will always be much faster than the buddy allocator.
 */
+#include "arctan.h"
 #include <mm/algo/pbuddy.h>
 #include <arch/info.h>
 #include <mm/pmm.h>
@@ -90,7 +91,7 @@
 #include <mm/algo/pfreelist.h>
 #include <mm/algo/vwatermark.h>
 #include <stdint.h>
-
+/*
 static const uint32_t pmm_bias_array[] = { PMM_BIAS_ARRAY };
 static const uintmax_t pmm_bias_low[] = { PMM_BIAS_LOW };
 static const uint32_t pmm_bias_ratio[] = { PMM_BIAS_RATIO };
@@ -98,6 +99,8 @@ static uint32_t pmm_bias_count = sizeof(pmm_bias_array) / sizeof(uint32_t);
 
 STATIC_ASSERT(sizeof(pmm_bias_array) / sizeof(uint32_t) == sizeof(pmm_bias_low) / sizeof(uintmax_t), "The number of bias array elements is not equal to the number bias low elements!");
 STATIC_ASSERT(sizeof(pmm_bias_array) / sizeof(uint32_t) == sizeof(pmm_bias_ratio) / sizeof(uint32_t), "The number of bias array elements is not equal to the number of bias ratio elements!");
+*/
+static uint32_t pmm_bias_count = sizeof(pmm_biases) / sizeof(struct ARC_PMMBiasConfigElement);
 
 static uint32_t max_address_width = 0;
 static struct ARC_VWatermark pmm_init_alloc = { 0 };
@@ -127,9 +130,11 @@ void *pmm_alloc(size_t size) {
 
         uint32_t i = 0;
         uint32_t t_size_exp = UINT32_MAX;
+        uint32_t buddy_min_exp = 0;
         for (; i < pmm_bias_count; i++) {
-                if (pmm_bias_array[i] < t_size_exp && t_size_exp > size_exponent) {
-                        t_size_exp = pmm_bias_array[i];
+                if (pmm_biases[i].exp < t_size_exp && t_size_exp > size_exponent) {
+                        t_size_exp = pmm_biases[i].exp;
+                        buddy_min_exp = pmm_biases[i].min_buddy_exp;
                 }
         }
 
@@ -142,7 +147,7 @@ void *pmm_alloc(size_t size) {
 
                 pmm_buddies[t_size_exp].exp = -1;
 
-                if (init_pbuddy(&pmm_buddies[t_size_exp], base, t_size_exp) != 0) {
+                if (init_pbuddy(&pmm_buddies[t_size_exp], base, t_size_exp, buddy_min_exp) != 0) {
                         goto get_more_mem;
                 }
         }
@@ -163,7 +168,7 @@ size_t pmm_free(void *address) {
         }
 
         for (uint32_t i = 0; i < pmm_bias_count; i++) {
-                int bias = pmm_bias_array[i];
+                int bias = pmm_biases[i].exp;
 
                 size_t s = pbuddy_free(&pmm_buddies[bias], address);
                 if (s > 0) {
@@ -235,19 +240,19 @@ static int pmm_create_freelists(struct ARC_MMap *mmap, int entries) {
                 ARC_DEBUG(INFO, "Found entry 0x%"PRIx64" -> 0x%"PRIx64" to initialize\n", base, ceil);
 
                 for (uint32_t j = 0; j < pmm_bias_count; j++) {
-                        if (pmm_bias_ratio[j] == 0) {
+                        if (pmm_biases[j].ratio.numerator == 0) {
                                 continue;
                         }
 
-                        int bias = pmm_bias_array[j];
+                        int bias = pmm_biases[j].exp;
                         size_t object_size = 1 << bias;
 
-                        if (len < pmm_bias_low[j] * object_size) {
+                        if (len < pmm_biases[j].min_blocks * object_size) {
                                 continue;
                         }
 
                         // Initialize list
-                        size_t range_len = ALIGN(len * pmm_bias_ratio[j] / PMM_BIAS_DENOMINATOR, object_size);
+                        size_t range_len = ALIGN(len * pmm_biases[j].ratio.numerator / pmm_biases[j].ratio.denominator, object_size);
                         if (range_len > len) {
                                 range_len = (len >> bias) << bias;
                         }
@@ -261,14 +266,14 @@ static int pmm_create_freelists(struct ARC_MMap *mmap, int entries) {
                 }
 
                 for (uint32_t j = 0; j < pmm_bias_count; j++) {
-                        if (pmm_bias_ratio[j] != 0) {
+                        if (pmm_biases[j].ratio.numerator != 0) {
                                 continue;
                         }
 
-                        int bias = pmm_bias_array[j];
+                        int bias = pmm_biases[j].exp;
                         size_t object_size = 1 << bias;
 
-                        if (len < pmm_bias_low[j] * object_size) {
+                        if (len < pmm_biases[j].min_blocks * object_size) {
                                 continue;
                         }
 

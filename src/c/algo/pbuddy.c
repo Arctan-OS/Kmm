@@ -67,7 +67,7 @@ static idx_t pbuddy_ptr2idx(struct ARC_PBuddyMeta *meta, uintptr_t ptr) {
         }
 
         ptr -= meta->base;
-        ptr >>= PMM_BUDDY_LOWEST_EXPONENT;
+        ptr >>= meta->min_exp;
         ptr /= sizeof(struct ARC_PBuddyNodeMeta);
 
         return (idx_t)ptr;
@@ -82,7 +82,7 @@ static void *pbuddy_merge(struct ARC_PBuddyMeta *meta, struct ARC_PBuddyNode *no
                 return NULL;
         }
 
-        int exp_idx = exp - PMM_BUDDY_LOWEST_EXPONENT;
+        int exp_idx = exp - meta->min_exp;
 
         uintptr_t _buddy = (uintptr_t)node ^ (1 << exp);
         struct ARC_PBuddyNode *buddy = (struct ARC_PBuddyNode *)_buddy;
@@ -137,7 +137,7 @@ static size_t pbuddy_release(struct ARC_PBuddyMeta *meta, struct ARC_PBuddyNode 
         }
 
         exp = meta->node_metas[idx].exp;
-        int exp_idx = exp - PMM_BUDDY_LOWEST_EXPONENT;
+        int exp_idx = exp - meta->min_exp;
 
         node->canary_high = ARC_PBUDDY_CANARY_HIGH;
         node->canary_low = ARC_PBUDDY_CANARY_LOW;
@@ -150,9 +150,9 @@ static size_t pbuddy_release(struct ARC_PBuddyMeta *meta, struct ARC_PBuddyNode 
 static int pbuddy_split(struct ARC_PBuddyMeta *meta, struct ARC_PBuddyNode *node) {
         idx_t idx = pbuddy_ptr2idx(meta, (uintptr_t)node);
         int exp = meta->node_metas[idx].exp;
-        int exp_idx = exp - PMM_BUDDY_LOWEST_EXPONENT;
+        int exp_idx = exp - meta->min_exp;
 
-        if (exp <= PMM_BUDDY_LOWEST_EXPONENT) {
+        if (exp <= meta->min_exp) {
                 ARC_DEBUG(ERR, "Exponent below minimum\n");
                 return -2;
         }
@@ -175,7 +175,7 @@ static int pbuddy_split(struct ARC_PBuddyMeta *meta, struct ARC_PBuddyNode *node
 }
 
 static void *pbuddy_acquire(struct ARC_PBuddyMeta *meta, int exp) {
-        int exp_idx = exp - PMM_BUDDY_LOWEST_EXPONENT;
+        int exp_idx = exp - meta->min_exp;
         struct ARC_PBuddyNode *node = meta->free[exp_idx];
         struct ARC_PBuddyNode *ret = NULL;
 
@@ -201,7 +201,7 @@ static void *pbuddy_acquire(struct ARC_PBuddyMeta *meta, int exp) {
         int c = 1;
         int i = exp_idx + 1;
 
-        for (; i < (meta->exp - PMM_BUDDY_LOWEST_EXPONENT + 1) && (node = meta->free[i]) == NULL; i++, c++);
+        for (; i < (meta->exp - meta->min_exp + 1) && (node = meta->free[i]) == NULL; i++, c++);
 
         retry:;
 
@@ -243,7 +243,7 @@ void *pbuddy_alloc(struct ARC_PBuddy *list, size_t size) {
         int exp = __builtin_ctz(size);
 
         if (list == NULL || list->head == NULL
-            || exp < PMM_BUDDY_LOWEST_EXPONENT || exp > list->exp) {
+            || exp < list->min_exp || exp > list->exp) {
                 ARC_DEBUG(ERR, "Improper parameters\n");
                 return NULL;
         }
@@ -302,18 +302,18 @@ int pbuddy_remove(struct ARC_PBuddy *list, struct ARC_PBuddyMeta *meta) {
         return -1;
 }
 
-int init_pbuddy(struct ARC_PBuddy *list, uintptr_t _base, int exp) {
+int init_pbuddy(struct ARC_PBuddy *list, uintptr_t _base, int exp, int min_exp) {
         if (list == NULL || _base == 0
-            || exp < PMM_BUDDY_LOWEST_EXPONENT || (list->exp != -1 && exp != list->exp)) {
+            || exp < min_exp || (list->exp != -1 && exp != list->exp)) {
                 ARC_DEBUG(ERR, "Failed to initialize buddy allocator, improper parameters\n");
                 return -1;
         }
 
         struct ARC_PBuddyMeta *meta = NULL;
-        uint32_t ptr_count = (exp - PMM_BUDDY_LOWEST_EXPONENT + 1);
+        uint32_t ptr_count = (exp - min_exp + 1);
         size_t obj_size = sizeof(*meta) + ptr_count * sizeof(void *);
 
-        size_t node_meta_size = (1 << (exp - PMM_BUDDY_LOWEST_EXPONENT)) * sizeof(struct ARC_PBuddyNodeMeta);
+        size_t node_meta_size = (1 << (exp - min_exp)) * sizeof(struct ARC_PBuddyNodeMeta);
         struct ARC_PBuddyNodeMeta *node_metas = pmm_alloc(node_meta_size);
 
         if (node_metas == NULL) {
@@ -328,6 +328,7 @@ int init_pbuddy(struct ARC_PBuddy *list, uintptr_t _base, int exp) {
         }
 
         list->exp = exp;
+        list->min_exp = min_exp;
 
         memset(node_metas, 0, node_meta_size);
 
@@ -337,6 +338,7 @@ int init_pbuddy(struct ARC_PBuddy *list, uintptr_t _base, int exp) {
         meta->base = _base;
         meta->free_objects = 1;
         meta->exp = exp;
+        meta->min_exp = min_exp;
 
         struct ARC_PBuddyNode *node = (struct ARC_PBuddyNode *)_base;
         node->canary_high = ARC_PBUDDY_CANARY_HIGH;
@@ -344,7 +346,7 @@ int init_pbuddy(struct ARC_PBuddy *list, uintptr_t _base, int exp) {
         node->next = NULL;
 
         meta->node_metas[0].exp = exp;
-        meta->free[exp - PMM_BUDDY_LOWEST_EXPONENT] = node;
+        meta->free[exp - min_exp] = node;
 
         ARC_ATOMIC_XCHG(&list->head, &meta, &meta->next);
 
