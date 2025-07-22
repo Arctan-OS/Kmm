@@ -32,12 +32,16 @@
 void *pmm_alloc(size_t size);
 size_t pmm_free(void *address);
 
-size_t pmm_alloc_fast_pages(size_t count);
+void *pmm_low_alloc(size_t size);
+size_t pmm_low_free(void *address);
+
+size_t pmm_alloc_fast_pages(size_t count, bool low);
+
 void *pmm_fast_page_alloc();
 size_t pmm_fast_page_free(void *address);
 
-void *pmm_low_page_alloc();
-size_t pmm_low_page_free(void *address);
+void *pmm_fast_page_alloc_low();
+size_t pmm_fast_page_free_low(void *address);
 
 int init_pmm(struct ARC_MMap *mmap, int entries);
 

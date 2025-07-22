@@ -82,6 +82,8 @@
  *  This is because the freelist allocator will always be much faster than the buddy allocator.
 */
 #include "arctan.h"
+#include "config.h"
+#include "lib/atomics.h"
 #include <mm/algo/pbuddy.h>
 #include <arch/info.h>
 #include <mm/pmm.h>
@@ -91,32 +93,38 @@
 #include <mm/algo/pfreelist.h>
 #include <mm/algo/vwatermark.h>
 #include <stdint.h>
-/*
-static const uint32_t pmm_bias_array[] = { PMM_BIAS_ARRAY };
-static const uintmax_t pmm_bias_low[] = { PMM_BIAS_LOW };
-static const uint32_t pmm_bias_ratio[] = { PMM_BIAS_RATIO };
-static uint32_t pmm_bias_count = sizeof(pmm_bias_array) / sizeof(uint32_t);
 
-STATIC_ASSERT(sizeof(pmm_bias_array) / sizeof(uint32_t) == sizeof(pmm_bias_low) / sizeof(uintmax_t), "The number of bias array elements is not equal to the number bias low elements!");
-STATIC_ASSERT(sizeof(pmm_bias_array) / sizeof(uint32_t) == sizeof(pmm_bias_ratio) / sizeof(uint32_t), "The number of bias array elements is not equal to the number of bias ratio elements!");
-*/
-static uint32_t pmm_bias_count = sizeof(pmm_biases) / sizeof(struct ARC_PMMBiasConfigElement);
+static uint32_t pmm_bias_count_high = sizeof(pmm_biases_high) / sizeof(struct ARC_PMMBiasConfigElement);
+static uint32_t pmm_bias_count_low = sizeof(pmm_biases_low) / sizeof(struct ARC_PMMBiasConfigElement);
 
 static uint32_t max_address_width = 0;
 static struct ARC_VWatermark pmm_init_alloc = { 0 };
 static struct ARC_VWatermarkMeta pmm_init_alloc_meta = { 0 };
-static struct ARC_PFreelist *pmm_freelists = NULL;
-static struct ARC_PBuddy *pmm_buddies = NULL;
+
+static struct ARC_PFreelist *pmm_freelists_high = NULL;
+static struct ARC_PBuddy *pmm_buddies_high = NULL;
+
+static struct ARC_PFreelist *pmm_freelists_low = NULL;
+static struct ARC_PBuddy *pmm_buddies_low = NULL;
 
 // This is a pool of fast pages. When you need an O(1) allocation of a
 // the PAGE_SIZE, use this by calling pmm_fast_page_alloc and USE pmm_fast_page_free.
 // Fast pages is a non-contiguous freelist with an object size that of the smallest
 // power two page size
-struct ARC_PFreelistNode *fast_page_pool = NULL;
-static size_t fast_page_count = 0;
-static size_t fast_page_allocated = 0;
+struct ARC_PFreelistNode *fast_page_pool_high = NULL;
+static size_t fast_page_count_high = 0;
+static size_t fast_page_allocated_high = 0;
 
-void *pmm_alloc(size_t size) {
+struct ARC_PFreelistNode *fast_page_pool_low = NULL;
+static size_t fast_page_count_low = 0;
+static size_t fast_page_allocated_low = 0;
+
+static void *pmm_internal_alloc(size_t size, bool low) {
+        const struct ARC_PMMBiasConfigElement *biases = low ? pmm_biases_low : pmm_biases_high;
+        struct ARC_PFreelist *freelists = low ? pmm_freelists_high : pmm_freelists_high;
+        struct ARC_PBuddy *buddies = low ? pmm_buddies_low : pmm_buddies_high;
+        uint32_t pmm_bias_count = low ? pmm_bias_count_low : pmm_bias_count_high;
+
         SIZE_T_NEXT_POW2(size);
         uint32_t size_exponent = __builtin_ctz(size);
 
@@ -124,35 +132,35 @@ void *pmm_alloc(size_t size) {
                 return pmm_fast_page_alloc();
         }
 
-        if (pmm_freelists[size_exponent].head != NULL) {
-                return pfreelist_alloc(&pmm_freelists[size_exponent]);
+        if (freelists[size_exponent].head != NULL) {
+                return pfreelist_alloc(&freelists[size_exponent]);
         }
 
         uint32_t i = 0;
         uint32_t t_size_exp = UINT32_MAX;
         uint32_t buddy_min_exp = 0;
         for (; i < pmm_bias_count; i++) {
-                if (pmm_biases[i].exp < t_size_exp && t_size_exp > size_exponent) {
-                        t_size_exp = pmm_biases[i].exp;
-                        buddy_min_exp = pmm_biases[i].min_buddy_exp;
+                if (biases[i].exp < t_size_exp && t_size_exp > size_exponent) {
+                        t_size_exp = biases[i].exp;
+                        buddy_min_exp = biases[i].min_buddy_exp;
                 }
         }
 
-        if (pmm_buddies[t_size_exp].head == NULL) {
-                uintptr_t base = (uintptr_t)pfreelist_alloc(&pmm_freelists[t_size_exp]);
+        if (buddies[t_size_exp].head == NULL) {
+                uintptr_t base = (uintptr_t)pfreelist_alloc(&freelists[t_size_exp]);
 
                 if (base == 0) {
                         goto get_more_mem;
                 }
 
-                pmm_buddies[t_size_exp].exp = -1;
+                buddies[t_size_exp].exp = -1;
 
-                if (init_pbuddy(&pmm_buddies[t_size_exp], base, t_size_exp, buddy_min_exp) != 0) {
+                if (init_pbuddy(&buddies[t_size_exp], base, t_size_exp, buddy_min_exp) != 0) {
                         goto get_more_mem;
                 }
         }
 
-        return pbuddy_alloc(&pmm_buddies[t_size_exp], size);
+        return pbuddy_alloc(&buddies[t_size_exp], size);
 
         get_more_mem:;
         ARC_DEBUG(ERR, "Failed to allocate %lu bytes of memory!\n", size);
@@ -162,20 +170,25 @@ void *pmm_alloc(size_t size) {
         return NULL;
 }
 
-size_t pmm_free(void *address) {
+static size_t pmm_internal_free(void *address, bool low) {
+        const struct ARC_PMMBiasConfigElement *biases = low ? pmm_biases_low : pmm_biases_high;
+        struct ARC_PFreelist *freelists = low ? pmm_freelists_high : pmm_freelists_high;
+        struct ARC_PBuddy *buddies = low ? pmm_buddies_low : pmm_buddies_high;
+        uint32_t pmm_bias_count = low ? pmm_bias_count_low : pmm_bias_count_high;
+
         if (address == NULL) {
                 return 0;
         }
 
         for (uint32_t i = 0; i < pmm_bias_count; i++) {
-                int bias = pmm_biases[i].exp;
+                int bias = biases[i].exp;
 
-                size_t s = pbuddy_free(&pmm_buddies[bias], address);
+                size_t s = pbuddy_free(&buddies[bias], address);
                 if (s > 0) {
                         return s;
                 }
 
-                if (pfreelist_free(&pmm_freelists[bias], address) == address) {
+                if (pfreelist_free(&freelists[bias], address) == address) {
                         return (1 << bias);
                 }
         }
@@ -185,21 +198,44 @@ size_t pmm_free(void *address) {
         return PAGE_SIZE;
 }
 
-size_t pmm_alloc_fast_pages(size_t count) {
+void *pmm_alloc(size_t size) {
+        return pmm_internal_alloc(size, false);
+}
+
+size_t pmm_free(void *address) {
+        return pmm_internal_free(address, false);
+}
+
+void *pmm_low_alloc(size_t size) {
+        return pmm_internal_alloc(size, true);
+}
+
+size_t pmm_low_free(void *address) {
+        return pmm_internal_free(address, true);
+}
+
+size_t pmm_alloc_fast_pages(size_t count, bool low) {
         (void)count;
+        (void)low;
         return -1;
 }
 
 void *pmm_fast_page_alloc() {
-        if (fast_page_count == fast_page_allocated && pmm_alloc_fast_pages(16) != 0) {
+        retry:;
+        if (fast_page_count_high == fast_page_allocated_high && pmm_alloc_fast_pages(16, false) != 0) {
                 return NULL;
         }
 
-        ARC_ATOMIC_INC(fast_page_allocated);
-        void *a = fast_page_pool;
-        fast_page_pool = fast_page_pool->next;
+        struct ARC_PFreelistNode *node = NULL;
 
-        return a;
+        if (fast_page_pool_high == NULL) {
+              goto retry;
+        }
+
+        ARC_ATOMIC_XCHG(&fast_page_pool_high, &fast_page_pool_high->next, &node);
+        ARC_ATOMIC_INC(fast_page_allocated_high);
+
+        return (void *)node;
 }
 
 size_t pmm_fast_page_free(void *address) {
@@ -208,19 +244,40 @@ size_t pmm_fast_page_free(void *address) {
         }
 
         struct ARC_PFreelistNode *entry = (struct ARC_PFreelistNode *)address;
-        entry->next = fast_page_pool;
-        fast_page_pool = entry;
-        ARC_ATOMIC_DEC(fast_page_allocated);
+        ARC_ATOMIC_XCHG(&fast_page_pool_high, &entry, &entry->next);
+        ARC_ATOMIC_DEC(fast_page_allocated_high);
 
         return PAGE_SIZE;
 }
 
-void *pmm_low_page_alloc() {
-        return NULL;
+void *pmm_fast_page_alloc_low() {
+        retry:;
+        if (fast_page_count_low == fast_page_allocated_low && pmm_alloc_fast_pages(16, true) != 0) {
+                return NULL;
+        }
+
+        struct ARC_PFreelistNode *node = NULL;
+
+        if (fast_page_pool_low == NULL) {
+                goto retry;
+        }
+
+        ARC_ATOMIC_XCHG(&fast_page_pool_low, &fast_page_pool_low->next, &node);
+        ARC_ATOMIC_INC(fast_page_allocated_low);
+
+        return (void *)node;
 }
 
-size_t pmm_low_page_free(void *address) {
-        return 0;
+size_t pmm_fast_page_free_low(void *address) {
+        if (address == NULL || (uintptr_t)address >= ARC_PHYS_TO_HHDM(ARC_PMM_LOW_MEM_LIM)) {
+                return 0;
+        }
+
+        struct ARC_PFreelistNode *entry = (struct ARC_PFreelistNode *)address;
+        ARC_ATOMIC_XCHG(&fast_page_pool_low, &entry, &entry->next);
+        ARC_ATOMIC_DEC(fast_page_allocated_low);
+
+        return PAGE_SIZE;
 }
 
 static int pmm_create_freelists(struct ARC_MMap *mmap, int entries) {
@@ -237,54 +294,45 @@ static int pmm_create_freelists(struct ARC_MMap *mmap, int entries) {
                 uintptr_t ceil = base + mmap[i].len;
                 uintptr_t len = entry.len;
 
-                ARC_DEBUG(INFO, "Found entry 0x%"PRIx64" -> 0x%"PRIx64" to initialize\n", base, ceil);
+                const struct ARC_PMMBiasConfigElement *biases = pmm_biases_high;
+                struct ARC_PFreelist *freelists = pmm_freelists_high;
+                size_t *fast_page_count = &fast_page_count_high;
+                struct ARC_PFreelistNode **fast_page_pool = &fast_page_pool_high;
+                uint32_t pmm_bias_count = pmm_bias_count_high;
 
-                for (uint32_t j = 0; j < pmm_bias_count; j++) {
-                        if (pmm_biases[j].ratio.numerator == 0) {
-                                continue;
-                        }
+                ARC_DEBUG(INFO, "Entry %d (0x%"PRIx64" -> 0x%"PRIx64") suitable for initialization\n", i, base, ceil);
 
-                        int bias = pmm_biases[j].exp;
-                        size_t object_size = 1 << bias;
-
-                        if (len < pmm_biases[j].min_blocks * object_size) {
-                                continue;
-                        }
-
-                        // Initialize list
-                        size_t range_len = ALIGN(len * pmm_biases[j].ratio.numerator / pmm_biases[j].ratio.denominator, object_size);
-                        if (range_len > len) {
-                                range_len = (len >> bias) << bias;
-                        }
-
-                        if (init_pfreelist(&pmm_freelists[bias], base, base + range_len, object_size) != 0) {
-                                ARC_DEBUG(ERR, "Failed to initialize\n");
-                        }
-
-                        base += range_len;
-                        len -= range_len;
+                if (entry.base < ARC_PMM_LOW_MEM_LIM) {
+                        biases = pmm_biases_low;
+                        freelists = pmm_freelists_low;
+                        fast_page_count = &fast_page_count_low;
+                        fast_page_pool = &fast_page_pool_low;
+                        pmm_bias_count = pmm_bias_count_low;
+                        ARC_DEBUG(INFO, "Entry is in low memory\n");
+                } else {
+                         ARC_DEBUG(INFO, "Entry is in high memory\n");
                 }
 
                 for (uint32_t j = 0; j < pmm_bias_count; j++) {
-                        if (pmm_biases[j].ratio.numerator != 0) {
+                        if (biases[j].ratio.numerator == 0) {
                                 continue;
                         }
 
-                        int bias = pmm_biases[j].exp;
+                        int bias = biases[j].exp;
                         size_t object_size = 1 << bias;
 
-                        if (len < pmm_biases[j].min_blocks * object_size) {
+                        if (len < biases[j].min_blocks * object_size) {
                                 continue;
                         }
 
                         // Initialize list
-                        size_t range_len = ALIGN(len - object_size, object_size);
+                        size_t range_len = ALIGN(len * biases[j].ratio.numerator / biases[j].ratio.denominator, object_size);
                         if (range_len > len) {
                                 range_len = (len >> bias) << bias;
                         }
 
-                        if (init_pfreelist(&pmm_freelists[bias], base, base + range_len, object_size) != 0) {
-                                ARC_DEBUG(ERR, "Failed to initalize\n");
+                        if (init_pfreelist(&freelists[bias], base, base + range_len, object_size) != 0) {
+                                ARC_DEBUG(ERR, "Failed to initialize\n");
                         }
 
                         base += range_len;
@@ -304,10 +352,10 @@ static int pmm_create_freelists(struct ARC_MMap *mmap, int entries) {
                         node = (struct ARC_PFreelistNode *)base;
                         node->next = (struct ARC_PFreelistNode *)(base + PAGE_SIZE);
                 }
-                fast_page_count += len >> PAGE_SIZE_LOWEST_EXPONENT;
+                *fast_page_count += len >> PAGE_SIZE_LOWEST_EXPONENT;
 
-                node->next = fast_page_pool;
-                fast_page_pool = (struct ARC_PFreelistNode *)old_base;
+                node->next = *fast_page_pool;
+                *fast_page_pool = (struct ARC_PFreelistNode *)old_base;
 
                 ARC_DEBUG(INFO, "\tInitialized 0x%"PRIx64" -> 0x%"PRIx64" as fast pages\n", old_base, ceil);
         }
@@ -325,10 +373,16 @@ int init_pmm(struct ARC_MMap *mmap, int entries) {
 
         ARC_DEBUG(INFO, "Initializing PMM (%lu bit)\n", max_address_width);
 
-        if (max_address_width < pmm_bias_count) {
-                ARC_DEBUG(ERR, "More biases than address width, only using first %lu biases\n", max_address_width);
-                ARC_DEBUG(WARN, "Ignoring %lu biases\n", pmm_bias_count - max_address_width);
-                pmm_bias_count = max_address_width;
+        if (max_address_width < pmm_bias_count_high) {
+                ARC_DEBUG(ERR, "More biases for high memory than bits in address width, only using first %lu biases\n", max_address_width);
+                ARC_DEBUG(WARN, "Ignoring %lu biases\n", pmm_bias_count_high - max_address_width);
+                pmm_bias_count_high = max_address_width;
+        }
+
+        if (max_address_width < pmm_bias_count_low) {
+                ARC_DEBUG(ERR, "More biases for low memory than bits in address width, only using first %lu biases\n", max_address_width);
+                ARC_DEBUG(WARN, "Ignoring %lu biases\n", pmm_bias_count_low - max_address_width);
+                pmm_bias_count_low = max_address_width;
         }
 
         uintptr_t watermark_base = 0;
@@ -336,13 +390,13 @@ int init_pmm(struct ARC_MMap *mmap, int entries) {
         size_t watermark_size = 2 * PAGE_SIZE;
         size_t pfreelist_size = max_address_width * sizeof(struct ARC_PFreelist);
         size_t pbuddy_size = max_address_width * sizeof(struct ARC_PBuddy);
-        watermark_size += ALIGN(pfreelist_size, PAGE_SIZE);
-        watermark_size += ALIGN(pbuddy_size, PAGE_SIZE);
+        watermark_size += ALIGN(pfreelist_size, PAGE_SIZE) * 2;
+        watermark_size += ALIGN(pbuddy_size, PAGE_SIZE) * 2;
 
         for (int i = 0; i < entries; i++) {
                 struct ARC_MMap entry = mmap[i];
 
-                if (entry.type != ARC_MEMORY_AVAILABLE && entry.len < watermark_size) {
+                if (entry.type != ARC_MEMORY_AVAILABLE || entry.len < watermark_size || entry.base < ARC_PMM_LOW_MEM_LIM) {
                         continue;
                 }
 
@@ -362,10 +416,15 @@ int init_pmm(struct ARC_MMap *mmap, int entries) {
                 ARC_HANG;
         }
 
-        pmm_freelists = vwatermark_alloc(&pmm_init_alloc, pfreelist_size);
-        memset(pmm_freelists, 0, pfreelist_size);
-        pmm_buddies = vwatermark_alloc(&pmm_init_alloc, pbuddy_size);
-        memset(pmm_buddies, 0, pbuddy_size);
+        pmm_freelists_high = vwatermark_alloc(&pmm_init_alloc, pfreelist_size);
+        memset(pmm_freelists_high, 0, pfreelist_size);
+        pmm_buddies_high = vwatermark_alloc(&pmm_init_alloc, pbuddy_size);
+        memset(pmm_buddies_high, 0, pbuddy_size);
+
+        pmm_freelists_low = vwatermark_alloc(&pmm_init_alloc, pfreelist_size);
+        memset(pmm_freelists_low, 0, pfreelist_size);
+        pmm_buddies_low = vwatermark_alloc(&pmm_init_alloc, pbuddy_size);
+        memset(pmm_buddies_low, 0, pbuddy_size);
 
         if (pmm_create_freelists(mmap, entries) == 0) {
                 ARC_DEBUG(ERR, "Failed to create freelists\n");
