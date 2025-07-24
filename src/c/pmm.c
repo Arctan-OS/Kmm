@@ -121,7 +121,7 @@ static size_t fast_page_allocated_low = 0;
 
 static void *pmm_internal_alloc(size_t size, bool low) {
         const struct ARC_PMMBiasConfigElement *biases = low ? pmm_biases_low : pmm_biases_high;
-        struct ARC_PFreelist *freelists = low ? pmm_freelists_high : pmm_freelists_high;
+        struct ARC_PFreelist *freelists = low ? pmm_freelists_low : pmm_freelists_high;
         struct ARC_PBuddy *buddies = low ? pmm_buddies_low : pmm_buddies_high;
         uint32_t pmm_bias_count = low ? pmm_bias_count_low : pmm_bias_count_high;
 
@@ -172,7 +172,7 @@ static void *pmm_internal_alloc(size_t size, bool low) {
 
 static size_t pmm_internal_free(void *address, bool low) {
         const struct ARC_PMMBiasConfigElement *biases = low ? pmm_biases_low : pmm_biases_high;
-        struct ARC_PFreelist *freelists = low ? pmm_freelists_high : pmm_freelists_high;
+        struct ARC_PFreelist *freelists = low ? pmm_freelists_low : pmm_freelists_high;
         struct ARC_PBuddy *buddies = low ? pmm_buddies_low : pmm_buddies_high;
         uint32_t pmm_bias_count = low ? pmm_bias_count_low : pmm_bias_count_high;
 
