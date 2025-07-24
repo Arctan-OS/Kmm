@@ -30,7 +30,7 @@
 #include <mm/pmm.h>
 #include <global.h>
 
-static struct ARC_PSlabMeta meta = { 0 };
+static struct ARC_PSlab meta = { 0 };
 
 void *alloc(size_t size) {
 	if (size > PAGE_SIZE / 2) {
@@ -69,12 +69,5 @@ int allocator_expand(size_t pages) {
 }
 
 int init_allocator(size_t pages) {
-	size_t range_length = (pages << 12) * 8;
-	void *range = (void *)pmm_alloc(range_length);
-	
-	if (range == NULL) {
-		return -1;
-	}
-	
-	return init_pslab(&meta, range, range_length) != range + range_length;
+	return init_pslab(&meta, 4, pages);
 }

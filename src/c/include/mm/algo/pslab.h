@@ -30,48 +30,14 @@
 #include <stddef.h>
 #include <mm/algo/pfreelist.h>
 
-struct ARC_PSlabMeta {
-	void *range;
-	struct ARC_PFreelistMeta *lists[8];
-	size_t range_length;
-	size_t list_sizes[8];
+struct ARC_PSlab {
+	struct ARC_PFreelist lists[8];
+	int lowest_exp;
 };
 
-/**
- * Allocate \a size bytes in the kernel heap.
- *
- * @param size_t size - The number of bytes to allocate.
- * @return The base address of the allocation.
- * */
-void *pslab_alloc(struct ARC_PSlabMeta *meta, size_t size);
-
-/**
- * Free the allocation at \a address.
- *
- * @param void *address - The allocation to free from the kernel heap.
- * @return The size of the allocation (non-zero value).
- * */
-size_t pslab_free(struct ARC_PSlabMeta *meta, void *address);
-
-/**
- * Expand a given SLAB's list
- *
- * This will expand a certain list (0-7) by the given number
- * of pages.
- *
- * @param struct ARC_PSlabMeta *pslab - The SLAB to expand.
- * @param int pages - The total number of pages to expand the allocator by.
- * @return zero upon success.
- * */
-int pslab_expand(struct ARC_PSlabMeta *pslab, size_t pages);
-/**
- * Initialize the kernel SLAB allocator.
- *
- * @param struct ARC_PFreelistMeta *memory - The freelist in which to initialize the allocator's lists.
- * @param void *range - The base address of the contiguous allocation where the SLAB should be initialized.
- * @param size_t range_size - Size of the range in bytes.
- * @return Error code (0: success).
- * */
-void *init_pslab(struct ARC_PSlabMeta *meta, void *range, size_t range_size);
+void *pslab_alloc(struct ARC_PSlab *meta, size_t size);
+size_t pslab_free(struct ARC_PSlab *meta, void *address);
+int pslab_expand(struct ARC_PSlab *meta, size_t pages_per_list);
+int init_pslab(struct ARC_PSlab *meta, int lowest_exp, size_t pages_per_list);
 
 #endif

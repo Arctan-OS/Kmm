@@ -23,95 +23,86 @@
  *
  * @DESCRIPTION
 */
+#include "util.h"
 #include <mm/algo/pslab.h>
 #include <mm/algo/pfreelist.h>
 #include <mm/pmm.h>
 #include <global.h>
 #include <lib/util.h>
 
-#define SMALLEST_SIZE 16 // bytes
-
-void *pslab_alloc(struct ARC_PSlabMeta *meta, size_t size) {
-	/*
-	**
-	if (size > meta->list_sizes[7]) {
-		// Just allocate a contiguous set of pages
-		ARC_DEBUG(ERR, "Failed to allocate size %lu\n", size);
+void *pslab_alloc(struct ARC_PSlab *meta, size_t size) {
+	if (meta == NULL) {
 		return NULL;
 	}
 
-	for (int i = 0; i < 8; i++) {
-		if (size <= meta->list_sizes[i]) {
-			return pfreelist_alloc(meta->lists[i]);
-		}
+	SIZE_T_NEXT_POW2(size);
+	int exp = max(__builtin_ctz(size), meta->lowest_exp);
+
+	if (exp > meta->lowest_exp + 8) {
+		return NULL;
 	}
-*/
-	return NULL;
+
+	retry:;
+
+	exp -= meta->lowest_exp;
+
+	void *a = pfreelist_alloc(&meta->lists[exp]);
+
+	if (a == NULL && pslab_expand(meta, 1) > exp) {
+		goto retry;
+	}
+
+	return a;
 }
 
-size_t pslab_free(struct ARC_PSlabMeta *meta, void *address) {
-	/*
+size_t pslab_free(struct ARC_PSlab *meta, void *address) {
+	if (meta == NULL || address == NULL) {
+		return 0;
+	}
+
 	for (int i = 0; i < 8; i++) {
-		void *base = meta->lists[i]->base;
-		void *ceil = meta->lists[i]->ceil;
-
-		if (base <= address && address <= ceil) {
-			memset(address, 0, meta->list_sizes[i]);
-		
-			if (pfreelist_free(meta->lists[i], address) != address) {
-				return 0;
-			}
-
-			return meta->list_sizes[i];
+		if (pfreelist_free(&meta->lists[i], address) == address) {
+			return 1 << (meta->lowest_exp + i);
 		}
 	}
-*/
+
 	return 0;
 }
 
-int pslab_expand(struct ARC_PSlabMeta *pslab, size_t pages) {
-	/*
-	**
-	if (pslab == NULL || pages == 0) {
+int pslab_expand(struct ARC_PSlab *meta, size_t pages_per_list) {
+	if (meta == NULL || pages_per_list == 0) {
 		return -1;
 	}
 
-	int err = 0;
+	for (int i = 0; i < 8; i++) {
+		size_t object_size = 1 << (meta->lowest_exp + i);
+		size_t size = pages_per_list << PAGE_SIZE_LOWEST_EXPONENT;
+		uintptr_t base = (uintptr_t)pmm_alloc(size);
 
-	for (int list = 0; list < 8; list++) {
-		uint64_t base = (uint64_t)pmm_alloc((pages >> 3) * PAGE_SIZE);
-		struct ARC_PFreelistMeta *meta = init_pfreelist(base, base + (pages * PAGE_SIZE), pslab->list_sizes[list]);
-	
-		ARC_DEBUG(INFO, "Expanding SLAB %p (%d) by %lu pages\n", pslab, list, pages);
-		
-//		err += link_pfreelists(pslab->lists[list], meta);
+		if (base == 0) {
+			// It isn't a fatal error (at least immediately) that more memory could
+			// not be allocated for any given list (it is not required for all lists to
+			// have the same number of elements) but an early return is needed (as a
+			// pfreelist cannot be initialized in memory we don't have) and the current
+			// index is returned as the error code so that pslab_alloc can determine
+			// whether to attempt to allocate again or to return NULL.
+			ARC_DEBUG(WARN, "Failed to allocate more space for list %d in pslab, exiting\n");
+			return i;
+		}
+
+		init_pfreelist(&meta->lists[i], base, base + size, object_size);
 	}
 
-	return err;
-	*/
 	return 0;
 }
 
-void *init_pslab(struct ARC_PSlabMeta *meta, void *range, size_t range_size) {
-	ARC_DEBUG(INFO, "Initializing SLAB allocator in range %p (%lu)\n", range, range_size);
-/*
-**
-	size_t partition_size = range_size >> 3;
-	size_t object_size = SMALLEST_SIZE;
-	uint64_t base = (uint64_t)range;
-
-	for (int i = 0; i < 8; i++) {
-		meta->lists[i] = init_pfreelist(base, base + partition_size, object_size);
-		meta->list_sizes[i] = object_size;
-		object_size <<= 1;
-		base += partition_size;
+int init_pslab(struct ARC_PSlab *meta, int lowest_exp, size_t pages_per_list) {
+	if (meta == NULL || pages_per_list == 0 || lowest_exp < __builtin_ctz(sizeof(void *))) {
+		ARC_DEBUG(ERR, "Failed to initialize pslab: not enough space for pointers\n");
+		return -1;
 	}
 
-	meta->range = range;
-	meta->range_length = range_size;
+	meta->lowest_exp = lowest_exp;
 
-	ARC_DEBUG(INFO, "Initialized SLAB allocator\n");
-	return (void *)base;
- */
-	return NULL;
+	return pslab_expand(meta, pages_per_list);
 }
