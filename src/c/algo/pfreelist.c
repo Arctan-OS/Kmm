@@ -100,14 +100,6 @@ void *pfreelist_free(struct ARC_PFreelist *list, void *address) {
 	return address;
 }
 
-int pfreelist_add(struct ARC_PFreelist *list, struct ARC_PFreelistMeta *meta) {
-	if (list == NULL || meta == NULL) {
-		return -1;
-	}
-
-	return 0;
-}
-
 int init_pfreelist(struct ARC_PFreelist *list, uintptr_t _base, uintptr_t _ceil, size_t _object_size) {
 	if (list == NULL || _base > _ceil || _object_size == 0) {
 		// Invalid parameters
@@ -151,7 +143,10 @@ int init_pfreelist(struct ARC_PFreelist *list, uintptr_t _base, uintptr_t _ceil,
 	// Set last entry to point to NULL
 	current->next = NULL;
 
-	ARC_ATOMIC_XCHG(&list->head, &meta, &meta->next);
+	spinlock_lock(&list->ordering_lock);
+	meta->next = list->head;
+	list->head = meta;
+	spinlock_unlock(&list->ordering_lock);
 
 	return 0;
 }

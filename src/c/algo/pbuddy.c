@@ -185,7 +185,7 @@ static void *pbuddy_acquire(struct ARC_PBuddyMeta *meta, int exp) {
                 ARC_ATOMIC_XCHG(&meta->free[exp_idx], &node->next, &ret);
 
                 if (ret == NULL) {
-                        goto retry2;
+                        goto split;
                 }
 
                 if (node != ret) {
@@ -196,7 +196,7 @@ static void *pbuddy_acquire(struct ARC_PBuddyMeta *meta, int exp) {
                 return ret;
         }
 
-        retry2:;
+        split:;
 
         int c = 1;
         int i = exp_idx + 1;
@@ -206,7 +206,7 @@ static void *pbuddy_acquire(struct ARC_PBuddyMeta *meta, int exp) {
         retry:;
 
         if (node == NULL) {
-                ARC_DEBUG(ERR, "No base node found\n");
+                ARC_DEBUG(WARN, "No base node found\n");
                 return NULL;
         }
 
@@ -227,7 +227,7 @@ static void *pbuddy_acquire(struct ARC_PBuddyMeta *meta, int exp) {
 
         for (; c > 0; c--) {
                 if (pbuddy_split(meta, node) != 0) {
-                        ARC_DEBUG(INFO, "Split failed, placing freeing node into %d pool (err: %d)\n", exp + c, c);
+                        ARC_DEBUG(WARN, "Split failed, placing freeing node into %d pool (err: %d)\n", exp + c, c);
                         ARC_ATOMIC_XCHG(&meta->free[i], &node, &ret);
                         node->next = ret;
 
@@ -247,6 +247,8 @@ void *pbuddy_alloc(struct ARC_PBuddy *list, size_t size) {
                 ARC_DEBUG(ERR, "Improper parameters\n");
                 return NULL;
         }
+
+        retry:;
 
         spinlock_lock(&list->order_lock);
         struct ARC_PBuddyMeta *current = list->head;
@@ -273,7 +275,13 @@ void *pbuddy_alloc(struct ARC_PBuddy *list, size_t size) {
 
         spinlock_unlock(&list->order_lock);
 
-        return pbuddy_acquire(current, exp);
+        void *a = pbuddy_acquire(current, exp);
+
+        if (a == NULL && init_pbuddy(list, (uintptr_t)pmm_alloc(1 << list->exp), list->exp, list->min_exp) == 0) {
+                goto retry;
+        }
+
+        return a;
 }
 
 size_t pbuddy_free(struct ARC_PBuddy *list, void *address) {
@@ -348,7 +356,10 @@ int init_pbuddy(struct ARC_PBuddy *list, uintptr_t _base, int exp, int min_exp) 
         meta->node_metas[0].exp = exp;
         meta->free[exp - min_exp] = node;
 
-        ARC_ATOMIC_XCHG(&list->head, &meta, &meta->next);
+        spinlock_lock(&list->order_lock);
+        meta->next = list->head;
+        list->head = meta;
+        spinlock_unlock(&list->order_lock);
 
         return 0;
 }
