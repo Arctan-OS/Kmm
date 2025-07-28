@@ -207,10 +207,18 @@ size_t pmm_free(void *address) {
 }
 
 void *pmm_low_alloc(size_t size) {
+        if (ARC_PMM_LOW_MEM_LIM == 0) {
+                return NULL;
+        }
+
         return pmm_internal_alloc(size, true);
 }
 
 size_t pmm_low_free(void *address) {
+        if (ARC_PMM_LOW_MEM_LIM == 0) {
+                return 0;
+        }
+
         return pmm_internal_free(address, true);
 }
 
@@ -280,6 +288,54 @@ size_t pmm_fast_page_free_low(void *address) {
         return PAGE_SIZE;
 }
 
+static size_t pmm_create_freelist(uintptr_t base, uintptr_t ceil, const struct ARC_PMMBiasConfigElement *bias, bool low) {
+        size_t len = ceil - base;
+
+        if (len == 0) {
+                ARC_DEBUG(INFO, "\tRange 0x%"PRIx64" is of zero length\n", base);
+                return 0;
+        }
+
+        if (low && base > ARC_PHYS_TO_HHDM(ARC_PMM_LOW_MEM_LIM)) {
+                ARC_DEBUG(INFO, "\tRange 0x%"PRIx64" is not a low region\n", base);
+                return 0;
+        }
+
+        struct ARC_PFreelist *freelists = low ? pmm_freelists_low : pmm_freelists_high;
+
+        if (bias->ratio.numerator == 0) {
+                ARC_DEBUG(INFO, "\tBias fraction has zero numerator\n");
+                return 0;
+        }
+
+        int bias_exp = bias->exp;
+        size_t object_size = 1 << bias_exp;
+
+        if (len < bias->min_blocks * object_size) {
+                ARC_DEBUG(INFO, "\tRange 0x%"PRIx64" does not meet min_blocks (%d) requirement of bias\n", base, bias->min_blocks);
+                return 0;
+        }
+
+        // Initialize list
+        size_t range_len = ALIGN(len * bias->ratio.numerator / bias->ratio.denominator, object_size);
+
+        if (low) {
+                range_len = min(range_len, ARC_PHYS_TO_HHDM(ARC_PMM_LOW_MEM_LIM) - base);
+        }
+
+        if (range_len > len) {
+                range_len = (len >> bias_exp) << bias_exp;
+        }
+
+        if (init_pfreelist(&freelists[bias_exp], base, base + range_len, object_size) != 0) {
+                ARC_DEBUG(ERR, "\tFailed to initialize\n");
+        }
+
+        ARC_DEBUG(INFO, "Initialized into %s memory\n", low ? "low" : "high");
+
+        return range_len;
+}
+
 static int pmm_create_freelists(struct ARC_MMap *mmap, int entries) {
         int initialized = 0;
 
@@ -292,72 +348,42 @@ static int pmm_create_freelists(struct ARC_MMap *mmap, int entries) {
 
                 uintptr_t base = ARC_PHYS_TO_HHDM(entry.base);
                 uintptr_t ceil = base + mmap[i].len;
-                uintptr_t len = entry.len;
+                bool begins_low = base < ARC_PHYS_TO_HHDM(ARC_PMM_LOW_MEM_LIM);
 
-                const struct ARC_PMMBiasConfigElement *biases = pmm_biases_high;
-                struct ARC_PFreelist *freelists = pmm_freelists_high;
-                size_t *fast_page_count = &fast_page_count_high;
-                struct ARC_PFreelistNode **fast_page_pool = &fast_page_pool_high;
-                uint32_t pmm_bias_count = pmm_bias_count_high;
-
-                ARC_DEBUG(INFO, "Entry %d (0x%"PRIx64" -> 0x%"PRIx64") suitable for initialization\n", i, base, ceil);
-
-                if (entry.base < ARC_PMM_LOW_MEM_LIM) {
-                        biases = pmm_biases_low;
-                        freelists = pmm_freelists_low;
-                        fast_page_count = &fast_page_count_low;
-                        fast_page_pool = &fast_page_pool_low;
-                        pmm_bias_count = pmm_bias_count_low;
-                        ARC_DEBUG(INFO, "Entry is in low memory\n");
-                } else {
-                         ARC_DEBUG(INFO, "Entry is in high memory\n");
+                if (begins_low) {
+                        for (uint32_t j = 0; j < pmm_bias_count_low; j++) {
+                                base += pmm_create_freelist(base, ceil, &pmm_biases_low[j], true);
+                        }
                 }
 
-                for (uint32_t j = 0; j < pmm_bias_count; j++) {
-                        if (biases[j].ratio.numerator == 0) {
-                                continue;
-                        }
-
-                        int bias = biases[j].exp;
-                        size_t object_size = 1 << bias;
-
-                        if (len < biases[j].min_blocks * object_size) {
-                                continue;
-                        }
-
-                        // Initialize list
-                        size_t range_len = ALIGN(len * biases[j].ratio.numerator / biases[j].ratio.denominator, object_size);
-                        if (range_len > len) {
-                                range_len = (len >> bias) << bias;
-                        }
-
-                        if (init_pfreelist(&freelists[bias], base, base + range_len, object_size) != 0) {
-                                ARC_DEBUG(ERR, "Failed to initialize\n");
-                        }
-
-                        base += range_len;
-                        len -= range_len;
+                for (uint32_t j = 0; j < pmm_bias_count_high; j++) {
+                        base += pmm_create_freelist(base, ceil, &pmm_biases_high[j], false);
                 }
-
-                initialized++;
 
                 if (base == ceil) {
+                        initialized++;
                         continue;
                 }
 
                 uintptr_t old_base = base;
+
+                begins_low = base < ARC_PHYS_TO_HHDM(ARC_PMM_LOW_MEM_LIM);
+                size_t *fast_page_count = begins_low ? &fast_page_count_low : &fast_page_count_high;
+                struct ARC_PFreelistNode **fast_page_pool = begins_low ? &fast_page_pool_low : &fast_page_pool_high;
 
                 struct ARC_PFreelistNode *node = (struct ARC_PFreelistNode *)base;
                 for (; base < ceil; base += PAGE_SIZE) {
                         node = (struct ARC_PFreelistNode *)base;
                         node->next = (struct ARC_PFreelistNode *)(base + PAGE_SIZE);
                 }
-                *fast_page_count += len >> PAGE_SIZE_LOWEST_EXPONENT;
+                *fast_page_count += (base - old_base) >> PAGE_SIZE_LOWEST_EXPONENT;
 
                 node->next = *fast_page_pool;
                 *fast_page_pool = (struct ARC_PFreelistNode *)old_base;
 
-                ARC_DEBUG(INFO, "\tInitialized 0x%"PRIx64" -> 0x%"PRIx64" as fast pages\n", old_base, ceil);
+                initialized++;
+
+                ARC_DEBUG(INFO, "\tInitialized 0x%"PRIx64" -> 0x%"PRIx64" as fast pages (%s)\n", old_base, ceil, begins_low ? "low" : "high");
         }
 
         return initialized;
@@ -390,8 +416,8 @@ int init_pmm(struct ARC_MMap *mmap, int entries) {
         size_t watermark_size = 2 * PAGE_SIZE;
         size_t pfreelist_size = max_address_width * sizeof(struct ARC_PFreelist);
         size_t pbuddy_size = max_address_width * sizeof(struct ARC_PBuddy);
-        watermark_size += ALIGN(pfreelist_size, PAGE_SIZE) * 2;
-        watermark_size += ALIGN(pbuddy_size, PAGE_SIZE) * 2;
+        watermark_size += ALIGN(pfreelist_size, PAGE_SIZE) * (1 + (ARC_PMM_LOW_MEM_LIM > 0));
+        watermark_size += ALIGN(pbuddy_size, PAGE_SIZE) * (1 + (ARC_PMM_LOW_MEM_LIM > 0));
 
         for (int i = 0; i < entries; i++) {
                 struct ARC_MMap entry = mmap[i];
@@ -421,10 +447,12 @@ int init_pmm(struct ARC_MMap *mmap, int entries) {
         pmm_buddies_high = vwatermark_alloc(&pmm_init_alloc, pbuddy_size);
         memset(pmm_buddies_high, 0, pbuddy_size);
 
-        pmm_freelists_low = vwatermark_alloc(&pmm_init_alloc, pfreelist_size);
-        memset(pmm_freelists_low, 0, pfreelist_size);
-        pmm_buddies_low = vwatermark_alloc(&pmm_init_alloc, pbuddy_size);
-        memset(pmm_buddies_low, 0, pbuddy_size);
+        if (ARC_PMM_LOW_MEM_LIM > 0) {
+                pmm_freelists_low = vwatermark_alloc(&pmm_init_alloc, pfreelist_size);
+                memset(pmm_freelists_low, 0, pfreelist_size);
+                pmm_buddies_low = vwatermark_alloc(&pmm_init_alloc, pbuddy_size);
+                memset(pmm_buddies_low, 0, pbuddy_size);
+        }
 
         if (pmm_create_freelists(mmap, entries) == 0) {
                 ARC_DEBUG(ERR, "Failed to create freelists\n");
