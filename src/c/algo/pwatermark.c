@@ -53,7 +53,7 @@ void *pwatermark_alloc(struct ARC_PWatermark *list, size_t size) {
 }
 
 int init_pwatermark(struct ARC_PWatermark *list, uintptr_t base, size_t len) {
-        if (list == NULL || base == 0 || len == 0) {
+        if (list == NULL || base == 0 || len <= sizeof(struct ARC_PWatermarkMeta)) {
                 return -1;
         }
 
