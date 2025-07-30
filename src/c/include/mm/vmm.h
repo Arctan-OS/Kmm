@@ -27,17 +27,16 @@
 #ifndef ARC_MM_VMM_H
 #define ARC_MM_VMM_H
 
-#include <mm/algo/pbuddy.h>
+#include <mm/algo/vwatermark.h>
 #include <stddef.h>
 
 // TODO: Is this really the best way to do this?
 struct ARC_VMMMeta {
-        struct ARC_PBuddyMeta buddy;
+        struct ARC_VWatermark vwatermark;
 };
 
 void *vmm_alloc(struct ARC_VMMMeta *meta, size_t size);
 size_t vmm_free(struct ARC_VMMMeta *meta, void *address);
-size_t vmm_len(struct ARC_VMMMeta *meta, void *address);
 struct ARC_VMMMeta *init_vmm(void *base, size_t size);
 
 #endif

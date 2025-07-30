@@ -24,65 +24,43 @@
  *
  * @DESCRIPTION
 */
+#include <mm/algo/vwatermark.h>
 #include <mm/vmm.h>
 #include <mm/allocator.h>
 #include <global.h>
 #include <lib/util.h>
 
 void *vmm_alloc(struct ARC_VMMMeta *meta, size_t size) {
-        /*
-        if (size == 0 || meta == NULL) {
-                return NULL;
-        }
-
-        return vbuddy_alloc(&meta->buddy, size);
-        */
-        return NULL;
+        return vwatermark_alloc(&meta->vwatermark, size);
 }
 
 size_t vmm_free(struct ARC_VMMMeta *meta, void *address) {
-        /*
-        if (meta == NULL) {
-                return 0;
-        }
-        
-        return vbuddy_free(&meta->buddy, address);
-        */
-        return 0;
-}
-
-size_t vmm_len(struct ARC_VMMMeta *meta, void *address) {
-        /*
-        if (meta == NULL) {
-                return 0;
-        }
-
-        return vbuddy_len(&meta->buddy, address);
-        */
-        return 0;
+        return vwatermark_free(&meta->vwatermark, address);
 }
 
 struct ARC_VMMMeta *init_vmm(void *base, size_t size) {
-        /*
-        struct ARC_VMMMeta *meta = (struct ARC_VMMMeta *)alloc(sizeof(*meta));
+        struct ARC_VMMMeta *meta = alloc(sizeof(*meta));
 
         if (meta == NULL) {
-                ARC_DEBUG(ERR, "Failed to allocate VMM meta\n");
+                return NULL;
+        }
+
+        struct ARC_VWatermarkMeta *vwatermark_meta = alloc(sizeof(*vwatermark_meta));
+
+        if (vwatermark_meta == NULL) {
+                free(vwatermark_meta);
                 return NULL;
         }
 
         memset(meta, 0, sizeof(*meta));
+        memset(vwatermark_meta, 0, sizeof(*vwatermark_meta));
 
-        meta->buddy.ialloc = alloc;
-        meta->buddy.ifree = free;
-
-        if (init_vbuddy(&meta->buddy, base, size, PAGE_SIZE) != 0) {
-                ARC_DEBUG(ERR, "Failed to initialize vbuddy allocator\n");
+        if (init_vwatermark(&meta->vwatermark, vwatermark_meta, (uintptr_t)base, size) != 0) {
                 free(meta);
+                free(vwatermark_meta);
+
                 return NULL;
         }
 
         return meta;
-        */
-        return NULL;
 }
