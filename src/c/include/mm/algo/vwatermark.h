@@ -31,11 +31,20 @@
 #include <stddef.h>
 #include <stdint.h>
 
-struct ARC_VWatermarkMeta {
-        struct ARC_VWatermarkMeta *next;
+struct ARC_VWatermarkNode {
+        struct ARC_VWatermarkNode *next;
         uintptr_t base;
         uintptr_t ceil;
-        size_t off;
+};
+
+struct ARC_VWatermarkMeta {
+        struct ARC_VWatermarkMeta *next;
+        struct ARC_VWatermarkNode *allocated;
+        struct ARC_VWatermarkNode *free;
+        uintptr_t base;
+        size_t size;
+        ARC_GenericSpinlock allocated_lock;
+        ARC_GenericSpinlock free_lock;
 };
 
 struct ARC_VWatermark {
@@ -44,6 +53,7 @@ struct ARC_VWatermark {
 };
 
 void *vwatermark_alloc(struct ARC_VWatermark *list, size_t size);
+size_t vwatermark_free(struct ARC_VWatermark *list, void *address);
 int init_vwatermark(struct ARC_VWatermark *list, struct ARC_VWatermarkMeta *meta, uintptr_t base, size_t len);
 
 #endif
