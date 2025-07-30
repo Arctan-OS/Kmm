@@ -91,15 +91,14 @@
 #include <global.h>
 #include <lib/util.h>
 #include <mm/algo/pfreelist.h>
-#include <mm/algo/vwatermark.h>
+#include <mm/algo/pwatermark.h>
 #include <stdint.h>
 
 static uint32_t pmm_bias_count_high = sizeof(pmm_biases_high) / sizeof(struct ARC_PMMBiasConfigElement);
 static uint32_t pmm_bias_count_low = sizeof(pmm_biases_low) / sizeof(struct ARC_PMMBiasConfigElement);
 
 static uint32_t max_address_width = 0;
-static struct ARC_VWatermark pmm_init_alloc = { 0 };
-static struct ARC_VWatermarkMeta pmm_init_alloc_meta = { 0 };
+static struct ARC_PWatermark pmm_init_alloc = { 0 };
 
 static struct ARC_PFreelist *pmm_freelists_high = NULL;
 static struct ARC_PBuddy *pmm_buddies_high = NULL;
@@ -367,19 +366,21 @@ static int pmm_create_freelists(struct ARC_MMap *mmap, int entries) {
 
                 uintptr_t old_base = base;
 
-                begins_low = base < ARC_PHYS_TO_HHDM(ARC_PMM_LOW_MEM_LIM);
-                size_t *fast_page_count = begins_low ? &fast_page_count_low : &fast_page_count_high;
-                struct ARC_PFreelistNode **fast_page_pool = begins_low ? &fast_page_pool_low : &fast_page_pool_high;
-
                 struct ARC_PFreelistNode *node = (struct ARC_PFreelistNode *)base;
                 for (; base < ceil; base += PAGE_SIZE) {
                         node = (struct ARC_PFreelistNode *)base;
                         node->next = (struct ARC_PFreelistNode *)(base + PAGE_SIZE);
                 }
-                *fast_page_count += (base - old_base) >> PAGE_SIZE_LOWEST_EXPONENT;
 
-                node->next = *fast_page_pool;
-                *fast_page_pool = (struct ARC_PFreelistNode *)old_base;
+                if (old_base < ARC_PHYS_TO_HHDM(ARC_PMM_LOW_MEM_LIM)) {
+                        fast_page_count_low += (base - old_base) >> PAGE_SIZE_LOWEST_EXPONENT;
+                        node->next = fast_page_pool_low;
+                        fast_page_pool_low = (struct ARC_PFreelistNode *)old_base;
+                } else {
+                        fast_page_count_high += (base - old_base) >> PAGE_SIZE_LOWEST_EXPONENT;
+                        node->next = fast_page_pool_high;
+                        fast_page_pool_high = (struct ARC_PFreelistNode *)old_base;
+                }
 
                 initialized++;
 
@@ -438,19 +439,19 @@ int init_pmm(struct ARC_MMap *mmap, int entries) {
                 break;
         }
 
-        if (init_vwatermark(&pmm_init_alloc, &pmm_init_alloc_meta, watermark_base, watermark_size) != 0) {
+        if (init_pwatermark(&pmm_init_alloc, watermark_base, watermark_size) != 0) {
                 ARC_HANG;
         }
 
-        pmm_freelists_high = vwatermark_alloc(&pmm_init_alloc, pfreelist_size);
+        pmm_freelists_high = pwatermark_alloc(&pmm_init_alloc, pfreelist_size);
         memset(pmm_freelists_high, 0, pfreelist_size);
-        pmm_buddies_high = vwatermark_alloc(&pmm_init_alloc, pbuddy_size);
+        pmm_buddies_high = pwatermark_alloc(&pmm_init_alloc, pbuddy_size);
         memset(pmm_buddies_high, 0, pbuddy_size);
 
         if (ARC_PMM_LOW_MEM_LIM > 0) {
-                pmm_freelists_low = vwatermark_alloc(&pmm_init_alloc, pfreelist_size);
+                pmm_freelists_low = pwatermark_alloc(&pmm_init_alloc, pfreelist_size);
                 memset(pmm_freelists_low, 0, pfreelist_size);
-                pmm_buddies_low = vwatermark_alloc(&pmm_init_alloc, pbuddy_size);
+                pmm_buddies_low = pwatermark_alloc(&pmm_init_alloc, pbuddy_size);
                 memset(pmm_buddies_low, 0, pbuddy_size);
         }
 
