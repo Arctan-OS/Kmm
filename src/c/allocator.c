@@ -4,10 +4,10 @@
  * @author awewsomegamer <awewsomegamer@gmail.com>
  *
  * @LICENSE
- * Arctan-OS/Kernel - Operating System Kernel
+ * Arctan-OS/Kmm - Operating System Kernel Memory Manager
  * Copyright (C) 2023-2025 awewsomegamer
  *
- * This file is part of Arctan-OS/Kernel.
+ * This file is part of Arctan-OS/Kmm.
  *
  * Arctan is free software; you can redistribute it and/or
  * modify it under the terms of the GNU General Public License
@@ -23,7 +23,9 @@
  * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
  *
  * @DESCRIPTION
- * Implements functions used for in kernel allocations.
+ * Implementation of the general purpose kernel allocator. It initializes a pslab
+ * allocator to allow for allocation of objects below PAGE_SIZE and defaults to
+ * the PMM for PAGE_SIZE or larger allocations.
 */
 #include <mm/allocator.h>
 #include <mm/algo/pslab.h>

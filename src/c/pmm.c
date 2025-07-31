@@ -4,10 +4,10 @@
  * @author awewsomegamer <awewsomegamer@gmail.com>
  *
  * @LICENSE
- * Arctan-OS/Kernel - Operating System Kernel
+ * Arctan-OS/Kmm - Operating System Kernel Memory Manager
  * Copyright (C) 2023-2025 awewsomegamer
  *
- * This file is part of Arctan-OS/Kernel.
+ * This file is part of Arctan-OS/Kmm.
  *
  * Arctan is free software; you can redistribute it and/or
  * modify it under the terms of the GNU General Public License
@@ -23,76 +23,36 @@
  * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
  *
  * @DESCRIPTION
- * Initialize the physical memory manager.
- * On x86-64 system, low memory can be defined as all memory below 1 MiB. If the option
- * to reserve low memory is set at compile, this memory will not be used in the initialization
- * of the physical memory manager.
+ * The default physical memory manager for Arctan-OS/Kernel. It iterates through
+ * the provided memory map (entries ordered by ascending base address) and initializes
+ * a high or low allocator using the pfreelist algorithm. The type of allocator, high or
+ * low, is determined by checking if the base of the allocator is below the constant
+ * "ARC_PMM_LOW_MEM_LIM". From there, the appropriate list of biases is iterated through
+ * initializing pfreelist allocators until no more can initialized in the current region
+ * at which point any remaining addresses in the range will be initialized as fast pages.
+ * These allocators are stored in a list who has as many elements as there are bits in
+ * the given architecture's address width. If a given size is not already encompassed by
+ * a pfreelist allocator, a pbuddy allocator is initialized in a range allocated from the
+ * next available pfreelist allocator that does exist. This pbuddy allocator is then used
+ * to make the allocation.
  *
- * The physical memory manager consists of two unique allocator types: freelist and buddy.
- * The first step is to segment memory greedily in page sized blocks. On x86-64 such blocks
- * would be of sizes and in order of: 1 GiB, 2 MiB, and 4 KiB. With this segmentation, freelists
- * can be constructed for each page size that is a power of two. Now, on x86-64, allocations
- * of 1 GiB, 2 MiB, and 4 KiB can be made in constant time provided that the freelists exist
- * for the desired size.
+ * NOTE: Fast page pools act essentially as a pfreelist allocator but with minimal overhead.
+ *       There are no checks in place to ensure that a given address is a fast page, as the
+ *       pools have no limits. For this reason it is the caller's duty to ensure that a fast
+ *       page is freed into the appropriate memory space (high or low). The general purpose
+ *       `pmm_alloc` function will use fast pages only from high memory and the general purpose
+ *       `pmm_free` function will free fast pages if it can not free to any other allocator.
  *
- * Additionally, if sizes between the intervals of the page sizes is desired, then the buddy
- * allocators will answer. These buddy allocators will have the same largest sizes as the blocks (i.e.
- * on x86-64: 1 GiB, 2 MiB), and the smallest size of the smallest power of two page size (i.e. on
- * x86-64: 4 KiB). These buddy allocators may now be used for power two allocations between the
- * largest page size and the smallest page size.
- *
- * The order of operations is as follows:
- *  1. Check for a freelist of that has the same block size as the requested
- *     size
- *     1.1 If such a list is found, preform a freelist allocation and return.
- *         Otherwise proceed to 2
- *  2. Fit the requested size to the next largest power two page size, and
- *     find the first buddy allocator associated with this size (the buddy allocators are stored in a reverse linked list)
- *     2.1 If an allocation is made with this buddy allocator, return.
- *         Otherwise proceed to step 3
- *  3. Choose to:
- *      create a new buddy allocator (which can be done in constant time)
- *      look for an existing buddy allocator that can make the allocation (done in linear time)
- *      fail
- *
- * This introduced a plethora of challenges in determining the domain in which an allocation was
- * made. This is a problem as this is a memory manager, not just an allocator, so freeing must also
- * be preformed.
- *
- * Idea 0:
- *  Loop through all buddy allocators, and check their bounds to see if the allocated address falls
- *  within them. If it does: call a free for that address using the buddy allocator. Otherwise,
- *  loop through each freelist and check their bounds to see if the allocated address falls
- *  within them. If it does: call a free for that address using the freelist allocator. Otherwise,
- *  fail.
- *
- * Biasing Function: (USE AN ARRAY)
- *  A polynomial function, b, is defined to bias the memory manager towards certain powers of two, or
- *  page sizes. This is done by computing | b(x) |, where x is the index of the power of two from the starting
- *  power of two (x belongs to I). The larger the computed value, the lower the emphasis, the lower the computed
- *  value, the more emphasis. | b(x) | = 0, represents the most emphasis.
- *
- *  NOTE: For implementation simplicity, only when | b(x) | = 0 does the given power of two get emphasis placed on it.
- *        Functions for b should have a very large integer coefficient such as 1024x(x-1)(x-2)...
- *
- *  Emphasis is represented by a target value representing the number of segments of each power of two
- *  in the freelists. These powers of two are initialized before any other power of two to ensure that
- *  there are at least some of them.
- *
- *  This is because the freelist allocator will always be much faster than the buddy allocator.
+ * NOTE: The "ARC_PMM_LOW_MEM_LIM" constant, high memory biases, and low memory biases are by
+ *       default defined by the architecture in <arch/arch-XYZ/config.h>. If the user chooses
+ *       to, it may be overrided and defined in <config.h>.
 */
-#include "arctan.h"
-#include "config.h"
-#include "lib/atomics.h"
-#include <mm/algo/pbuddy.h>
 #include <arch/info.h>
-#include <mm/pmm.h>
-#include <arch/x86-64/config.h>
-#include <global.h>
 #include <lib/util.h>
+#include <mm/pmm.h>
+#include <mm/algo/pbuddy.h>
 #include <mm/algo/pfreelist.h>
 #include <mm/algo/pwatermark.h>
-#include <stdint.h>
 
 static uint32_t pmm_bias_count_high = sizeof(pmm_biases_high) / sizeof(struct ARC_PMMBiasConfigElement);
 static uint32_t pmm_bias_count_low = sizeof(pmm_biases_low) / sizeof(struct ARC_PMMBiasConfigElement);

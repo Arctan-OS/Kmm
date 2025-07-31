@@ -4,10 +4,10 @@
  * @author awewsomegamer <awewsomegamer@gmail.com>
  *
  * @LICENSE
- * Arctan-OS/Kernel - Operating System Kernel
+ * Arctan-OS/Kmm - Operating System Kernel Memory Manager
  * Copyright (C) 2023-2025 awewsomegamer
  *
- * This file is part of Arctan-OS/Kernel.
+ * This file is part of Arctan-OS/Kmm.
  *
  * Arctan is free software; you can redistribute it and/or
  * modify it under the terms of the GNU General Public License
@@ -23,6 +23,8 @@
  * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
  *
  * @DESCRIPTION
+ * The virtual memory manager can be instantiated among many processes. It uses
+ * the vwatermark as its primary allocation algorithm.
 */
 #include <mm/algo/vwatermark.h>
 #include <mm/vmm.h>

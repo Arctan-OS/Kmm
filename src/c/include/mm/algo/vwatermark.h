@@ -1,13 +1,13 @@
 /**
- * @file vwatermark.h
+ * @file vwatermark.c
  *
  * @author awewsomegamer <awewsomegamer@gmail.com>
  *
  * @LICENSE
- * Arctan-OS/Kernel - Operating System Kernel
+ * Arctan-OS/Kmm - Operating System Kernel Memory Manager
  * Copyright (C) 2023-2025 awewsomegamer
  *
- * This file is part of Arctan-OS/Kernel.
+ * This file is part of Arctan-OS/Kmm.
  *
  * Arctan is free software; you can redistribute it and/or
  * modify it under the terms of the GNU General Public License
@@ -23,11 +23,12 @@
  * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
  *
  * @DESCRIPTION
+ * Function and structure declarations for vwatermark.c.
 */
 #ifndef ARC_MM_ALGO_VWATERMARK_H
 #define ARC_MM_ALGO_VWATERMARK_H
 
-#include "lib/atomics.h"
+#include <lib/atomics.h>
 #include <stddef.h>
 #include <stdint.h>
 

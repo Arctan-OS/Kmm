@@ -4,10 +4,10 @@
  * @author awewsomegamer <awewsomegamer@gmail.com>
  *
  * @LICENSE
- * Arctan-OS/Kernel - Operating System Kernel
+ * Arctan-OS/Kmm - Operating System Kernel Memory Manager
  * Copyright (C) 2023-2025 awewsomegamer
  *
- * This file is part of Arctan-MB2BSP
+ * This file is part of Arctan-OS/Kmm.
  *
  * Arctan is free software; you can redistribute it and/or
  * modify it under the terms of the GNU General Public License
@@ -23,8 +23,24 @@
  * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
  *
  * @DESCRIPTION
+ * Implementation of a buddy memory management algorithm to work on present
+ * regions of memory. A region of a given power of two in size is given to
+ * the initialization function, upon a call to allocate an appropriately sized
+ * region is attempted to be gotten, if not present the next smallest region will
+ * be split. Likewise, on free split pairs (buddies) will be merged upwards if both
+ * buddies are no longer in use. Sizing information is kept track of in an external
+ * meta structure (that should be the size of a bias). The number of these meta
+ * structures that exist is given by the formula 2^(list->exp - list->min_exp) where
+ * `list` is a ARC_PBuddy structure.
+ *
+ * NOTE: This algorithm depends on the PMM having a freelist with the right object
+ *       size to house the metadata structure. Therefore: it is required that the PMM
+ *       freelists be initialized prior to the use of this algorithm.
+ *
+ * TODO: Remove the need for exactly sized objects and include some sort of internal
+ *       allocator to efficiently use up unused space allocated for the node metadata
+ *       list.
 */
-#include "arch/x86-64/config.h"
 #include <lib/atomics.h>
 #include <arch/info.h>
 #include <lib/util.h>

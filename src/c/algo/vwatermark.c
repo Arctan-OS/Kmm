@@ -4,10 +4,10 @@
  * @author awewsomegamer <awewsomegamer@gmail.com>
  *
  * @LICENSE
- * Arctan-OS/Kernel - Operating System Kernel
+ * Arctan-OS/Kmm - Operating System Kernel Memory Manager
  * Copyright (C) 2023-2025 awewsomegamer
  *
- * This file is part of Arctan-OS/Kernel.
+ * This file is part of Arctan-OS/Kmm.
  *
  * Arctan is free software; you can redistribute it and/or
  * modify it under the terms of the GNU General Public License
@@ -23,9 +23,21 @@
  * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
  *
  * @DESCRIPTION
+ * Implementation of a watermark memory management algorithm for non-present,
+ * "virtual", memory regions. The algorithm keeps track of free regions by
+ * using dynamically allocated metadata structures. A suitably sized free
+ * region is then allocated from. Free regions are greedily merged on every
+ * free.
+ *
+ * NOTE: Due to the dynamic metdata structures that are allocated using the
+ *       general purpose kernel allocator, this algorithm may not be used
+ *       in the PMM or general purpose kernel allocator.
+ *
+ * NOTE: Currently very large locks are used to ensure synchornization in the
+ *       allocated and free region lists. This should be refined so that allocations
+ *       and frees do not take long.
 */
-#include "lib/atomics.h"
-#include "mm/allocator.h"
+#include <mm/allocator.h>
 #include <mm/algo/vwatermark.h>
 #include <global.h>
 
