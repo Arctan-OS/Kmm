@@ -41,12 +41,12 @@
  *       allocator to efficiently use up unused space allocated for the node metadata
  *       list.
 */
-#include <lib/atomics.h>
 #include <arch/info.h>
-#include <lib/util.h>
-#include <mm/pmm.h>
-#include <mm/algo/pbuddy.h>
 #include <global.h>
+#include <lib/atomics.h>
+#include <lib/util.h>
+#include <mm/algo/pbuddy.h>
+#include <mm/pmm.h>
 
 #define ADDRESS_IN_META(address, meta, exp) ((void *)meta->base <= (void *)address && (void *)address <= (void *)(meta->base + (1 << exp)))
 

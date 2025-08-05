@@ -27,10 +27,10 @@
  * on present regions of memory. A freelist is set up within the given region
  * and constant sized objects are allocated and freed from/to it.
 */
-#include <mm/algo/pfreelist.h>
+#include <global.h>
 #include <lib/atomics.h>
 #include <lib/util.h>
-#include <global.h>
+#include <mm/algo/pfreelist.h>
 #include <stdint.h>
 
 #define ADDRESS_IN_META(address, meta) ((void *)meta->base <= (void *)address && (void *)address <= (void *)meta->ceil)

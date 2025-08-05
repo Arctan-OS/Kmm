@@ -28,11 +28,13 @@
 #ifndef ARC_MM_ALGO_PSLAB_H
 #define ARC_MM_ALGO_PSLAB_H
 
-#include <stddef.h>
 #include <mm/algo/pfreelist.h>
+#include <stddef.h>
 
 struct ARC_PSlab {
+	/// 8 freelists for each level of the slab.
 	struct ARC_PFreelist lists[8];
+	/// The lowest exponent of the power of two size for the smallest object.
 	int lowest_exp;
 };
 

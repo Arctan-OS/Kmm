@@ -27,8 +27,8 @@
  * present memory using a basic watermark allocator. This allocator is useful
  * for very early allocations where freeing is not needed.
 */
-#include <mm/algo/pwatermark.h>
 #include <global.h>
+#include <mm/algo/pwatermark.h>
 
 void *pwatermark_alloc(struct ARC_PWatermark *list, size_t size) {
         if (list == NULL  || list->head == NULL || size == 0) {

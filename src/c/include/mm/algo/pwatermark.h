@@ -28,7 +28,7 @@
 #ifndef ARC_MM_ALGO_PWATERMARK_H
 #define ARC_MM_ALGO_PWATERMARK_H
 
-#include "lib/atomics.h"
+#include <lib/atomics.h>
 #include <stddef.h>
 #include <stdint.h>
 

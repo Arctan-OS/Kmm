@@ -29,6 +29,7 @@
 #define ARC_MM_PMM_H
 
 #include <global.h>
+#include <stddef.h>
 
 void *pmm_alloc(size_t size);
 size_t pmm_free(void *address);

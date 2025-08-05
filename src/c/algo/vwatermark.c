@@ -37,9 +37,9 @@
  *       allocated and free region lists. This should be refined so that allocations
  *       and frees do not take long.
 */
+#include <global.h>
 #include <mm/allocator.h>
 #include <mm/algo/vwatermark.h>
-#include <global.h>
 
 #define ADDRESS_IN_META(address, meta) ((void *)meta->base <= (void *)address && (void *)address <= (void *)(meta->base + meta->size))
 
