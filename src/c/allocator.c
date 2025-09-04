@@ -27,9 +27,10 @@
  * allocator to allow for allocation of objects below PAGE_SIZE and defaults to
  * the PMM for PAGE_SIZE or larger allocations.
 */
-#include <mm/algo/pslab.h>
-#include <mm/allocator.h>
-#include <mm/pmm.h>
+#include "global.h"
+#include "mm/algo/pslab.h"
+#include "mm/allocator.h"
+#include "mm/pmm.h"
 
 static struct ARC_PSlab meta = { 0 };
 

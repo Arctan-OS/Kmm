@@ -47,12 +47,13 @@
  *       default defined by the architecture in <arch/arch-XYZ/config.h>. If the user chooses
  *       to, it may be overrided and defined in <config.h>.
 */
-#include <arch/info.h>
-#include <lib/util.h>
-#include <mm/pmm.h>
-#include <mm/algo/pbuddy.h>
-#include <mm/algo/pfreelist.h>
-#include <mm/algo/pwatermark.h>
+#include "arch/info.h"
+#include "lib/util.h"
+#include "global.h"
+#include "mm/pmm.h"
+#include "mm/algo/pbuddy.h"
+#include "mm/algo/pfreelist.h"
+#include "mm/algo/pwatermark.h"
 
 static uint32_t pmm_bias_count_high = sizeof(pmm_biases_high) / sizeof(struct ARC_PMMBiasConfigElement);
 static uint32_t pmm_bias_count_low = sizeof(pmm_biases_low) / sizeof(struct ARC_PMMBiasConfigElement);

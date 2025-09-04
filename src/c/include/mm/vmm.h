@@ -28,7 +28,7 @@
 #ifndef ARC_MM_VMM_H
 #define ARC_MM_VMM_H
 
-#include <mm/algo/vwatermark.h>
+#include "mm/algo/vwatermark.h"
 #include <stddef.h>
 
 struct ARC_VMMMeta {

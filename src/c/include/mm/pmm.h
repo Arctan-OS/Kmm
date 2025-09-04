@@ -28,7 +28,9 @@
 #ifndef ARC_MM_PMM_H
 #define ARC_MM_PMM_H
 
-#include <global.h>
+#include "arctan.h"
+
+#include <stdbool.h>
 #include <stddef.h>
 
 void *pmm_alloc(size_t size);

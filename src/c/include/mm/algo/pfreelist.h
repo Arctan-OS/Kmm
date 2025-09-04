@@ -28,7 +28,8 @@
 #ifndef ARC_MM_ALGO_PFREELIST_H
 #define ARC_MM_ALGO_PFREELIST_H
 
-#include <lib/atomics.h>
+#include "lib/spinlock.h"
+
 #include <stdint.h>
 #include <stddef.h>
 
@@ -48,12 +49,12 @@ struct ARC_PFreelistMeta {
 	struct ARC_PFreelistNode *ceil;
 	size_t free_objects;
 	/// Lock for everything.
-	ARC_GenericSpinlock lock;
+	ARC_Spinlock lock;
 };
 
 struct ARC_PFreelist {
 	struct ARC_PFreelistMeta *head;
-	ARC_GenericSpinlock ordering_lock;
+	ARC_Spinlock ordering_lock;
 };
 
 void *pfreelist_alloc(struct ARC_PFreelist *list);

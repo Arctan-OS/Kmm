@@ -31,11 +31,11 @@
  * NOTE: This algorithm depends on the PMM being initialized as it utilizes
  *       `pmm_alloc` to attain memory for its lists.
 */
-#include <global.h>
-#include <mm/algo/pfreelist.h>
-#include <mm/pmm.h>
-#include <mm/algo/pslab.h>
-#include <lib/util.h>
+#include "global.h"
+#include "mm/algo/pfreelist.h"
+#include "mm/algo/pslab.h"
+#include "mm/pmm.h"
+#include "lib/util.h"
 
 void *pslab_alloc(struct ARC_PSlab *meta, size_t size) {
 	if (meta == NULL) {

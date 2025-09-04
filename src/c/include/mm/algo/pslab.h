@@ -28,7 +28,8 @@
 #ifndef ARC_MM_ALGO_PSLAB_H
 #define ARC_MM_ALGO_PSLAB_H
 
-#include <mm/algo/pfreelist.h>
+#include "mm/algo/pfreelist.h"
+
 #include <stddef.h>
 
 struct ARC_PSlab {

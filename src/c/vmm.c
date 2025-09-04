@@ -26,11 +26,11 @@
  * The virtual memory manager can be instantiated among many processes. It uses
  * the vwatermark as its primary allocation algorithm.
 */
-#include <global.h>
-#include <lib/util.h>
-#include <mm/allocator.h>
-#include <mm/vmm.h>
-#include <mm/algo/vwatermark.h>
+#include "global.h"
+#include "lib/util.h"
+#include "mm/algo/vwatermark.h"
+#include "mm/allocator.h"
+#include "mm/vmm.h"
 
 void *vmm_alloc(struct ARC_VMMMeta *meta, size_t size) {
         return vwatermark_alloc(&meta->vwatermark, size);

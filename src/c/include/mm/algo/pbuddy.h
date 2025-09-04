@@ -28,8 +28,9 @@
 #ifndef ARC_MM_ALGO_PBUDDY_H
 #define ARC_MM_ALGO_PBUDDY_H
 
-#include <mm/algo/pfreelist.h>
-#include <lib/atomics.h>
+#include "mm/algo/pfreelist.h"
+#include "lib/spinlock.h"
+
 #include <stdint.h>
 #include <stddef.h>
 
@@ -80,7 +81,7 @@ struct ARC_PBuddy {
         /// The lowest exponent of the power of two for this allocator.
         int min_exp;
         /// Ordering lock for the `head` member.
-        ARC_GenericSpinlock order_lock;
+        ARC_Spinlock order_lock;
 };
 
 void *pbuddy_alloc(struct ARC_PBuddy *list, size_t size);

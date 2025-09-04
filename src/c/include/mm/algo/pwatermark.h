@@ -28,7 +28,8 @@
 #ifndef ARC_MM_ALGO_PWATERMARK_H
 #define ARC_MM_ALGO_PWATERMARK_H
 
-#include <lib/atomics.h>
+#include "lib/spinlock.h"
+
 #include <stddef.h>
 #include <stdint.h>
 
@@ -41,7 +42,7 @@ struct ARC_PWatermarkMeta {
 
 struct ARC_PWatermark {
         struct ARC_PWatermarkMeta *head;
-        ARC_GenericSpinlock order_lock;
+        ARC_Spinlock order_lock;
 };
 
 void *pwatermark_alloc(struct ARC_PWatermark *list, size_t size);

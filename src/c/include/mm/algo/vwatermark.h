@@ -28,7 +28,7 @@
 #ifndef ARC_MM_ALGO_VWATERMARK_H
 #define ARC_MM_ALGO_VWATERMARK_H
 
-#include <lib/atomics.h>
+#include "lib/spinlock.h"
 #include <stddef.h>
 #include <stdint.h>
 
@@ -44,13 +44,13 @@ struct ARC_VWatermarkMeta {
         struct ARC_VWatermarkNode *free;
         uintptr_t base;
         size_t size;
-        ARC_GenericSpinlock allocated_lock;
-        ARC_GenericSpinlock free_lock;
+        ARC_Spinlock allocated_lock;
+        ARC_Spinlock free_lock;
 };
 
 struct ARC_VWatermark {
         struct ARC_VWatermarkMeta *head;
-        ARC_GenericSpinlock order_lock;
+        ARC_Spinlock order_lock;
 };
 
 void *vwatermark_alloc(struct ARC_VWatermark *list, size_t size);
