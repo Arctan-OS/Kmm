@@ -85,13 +85,9 @@ void *vwatermark_alloc(struct ARC_VWatermark *list, size_t size) {
                 return NULL;
         }
 
-        printf("Found free node: %p\n", free_node);
-
         void *a = (void *)free_node->base;
 
         bool used_up = (free_node->base + size == free_node->ceil);
-
-        ARC_DEBUG(INFO, "%"PRIx64" + %lu == %"PRIx64 "=> %d\n", free_node->base, size, free_node->ceil, used_up);
 
         if (used_up) {
                 if (prev != NULL) {
