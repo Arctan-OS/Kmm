@@ -32,16 +32,16 @@
 #include "mm/allocator.h"
 #include "mm/vmm.h"
 
-void *vmm_alloc(struct ARC_VMMMeta *meta, size_t size) {
+void *vmm_alloc(ARC_VMMMeta *meta, size_t size) {
         return vwatermark_alloc(&meta->vwatermark, size);
 }
 
-size_t vmm_free(struct ARC_VMMMeta *meta, void *address) {
+size_t vmm_free(ARC_VMMMeta *meta, void *address) {
         return vwatermark_free(&meta->vwatermark, address);
 }
 
-struct ARC_VMMMeta *init_vmm(void *base, size_t size) {
-        struct ARC_VMMMeta *meta = alloc(sizeof(*meta));
+ARC_VMMMeta *init_vmm(void *base, size_t size) {
+        ARC_VMMMeta *meta = alloc(sizeof(*meta));
 
         if (meta == NULL) {
                 return NULL;

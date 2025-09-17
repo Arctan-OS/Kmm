@@ -31,12 +31,12 @@
 #include "mm/algo/vwatermark.h"
 #include <stddef.h>
 
-struct ARC_VMMMeta {
+typedef struct ARC_VMMMeta {
         struct ARC_VWatermark vwatermark;
-};
+} ARC_VMMMeta;
 
-void *vmm_alloc(struct ARC_VMMMeta *meta, size_t size);
-size_t vmm_free(struct ARC_VMMMeta *meta, void *address);
-struct ARC_VMMMeta *init_vmm(void *base, size_t size);
+void *vmm_alloc(ARC_VMMMeta *meta, size_t size);
+size_t vmm_free(ARC_VMMMeta *meta, void *address);
+ARC_VMMMeta *init_vmm(void *base, size_t size);
 
 #endif
