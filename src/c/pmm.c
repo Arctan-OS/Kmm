@@ -277,7 +277,7 @@ static size_t pmm_create_freelist(uintptr_t base, uintptr_t ceil, const struct A
         }
 
         // Initialize list
-        size_t range_len = ALIGN(len * bias->ratio.numerator / bias->ratio.denominator, object_size);
+        size_t range_len = ALIGN_UP(len * bias->ratio.numerator / bias->ratio.denominator, object_size);
 
         if (low) {
                 range_len = min(range_len, ARC_PHYS_TO_HHDM(ARC_PMM_LOW_MEM_LIM) - base);
@@ -378,8 +378,8 @@ int init_pmm(struct ARC_MMap *mmap, int entries) {
         size_t watermark_size = 2 * PAGE_SIZE;
         size_t pfreelist_size = max_address_width * sizeof(struct ARC_PFreelist);
         size_t pbuddy_size = max_address_width * sizeof(struct ARC_PBuddy);
-        watermark_size += ALIGN(pfreelist_size, PAGE_SIZE) * (1 + (ARC_PMM_LOW_MEM_LIM > 0));
-        watermark_size += ALIGN(pbuddy_size, PAGE_SIZE) * (1 + (ARC_PMM_LOW_MEM_LIM > 0));
+        watermark_size += ALIGN_UP(pfreelist_size, PAGE_SIZE) * (1 + (ARC_PMM_LOW_MEM_LIM > 0));
+        watermark_size += ALIGN_UP(pbuddy_size, PAGE_SIZE) * (1 + (ARC_PMM_LOW_MEM_LIM > 0));
 
         for (int i = 0; i < entries; i++) {
                 struct ARC_MMap entry = mmap[i];
