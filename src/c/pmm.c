@@ -131,14 +131,14 @@ static void *pmm_internal_alloc(size_t size, bool low) {
 }
 
 static size_t pmm_internal_free(void *address, bool low) {
+        if (address == NULL) {
+                return 0;
+        }
+
         const struct ARC_PMMBiasConfigElement *biases = low ? pmm_biases_low : pmm_biases_high;
         struct ARC_PFreelist *freelists = low ? pmm_freelists_low : pmm_freelists_high;
         struct ARC_PBuddy *buddies = low ? pmm_buddies_low : pmm_buddies_high;
         uint32_t pmm_bias_count = low ? pmm_bias_count_low : pmm_bias_count_high;
-
-        if (address == NULL) {
-                return 0;
-        }
 
         for (uint32_t i = 0; i < pmm_bias_count; i++) {
                 int bias = biases[i].exp;
