@@ -93,7 +93,7 @@ int pslab_expand(struct ARC_PSlab *meta, size_t pages_per_list) {
 			// pfreelist cannot be initialized in memory we don't have) and the current
 			// index is returned as the error code so that pslab_alloc can determine
 			// whether to attempt to allocate again or to return NULL.
-			ARC_DEBUG(WARN, "Failed to allocate more space for list %d in pslab, exiting\n");
+			ARC_DEBUG(WARN, "Failed to allocate more space for list %d in pslab, exiting\n", i);
 			return i;
 		}
 

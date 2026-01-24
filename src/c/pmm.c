@@ -272,7 +272,7 @@ static size_t pmm_create_freelist(uintptr_t base, uintptr_t ceil, const struct A
         size_t object_size = 1 << bias_exp;
 
         if (len < bias->min_blocks * object_size) {
-                ARC_DEBUG(INFO, "\tRange 0x%"PRIx64" does not meet min_blocks (%d) requirement of bias\n", base, bias->min_blocks);
+                ARC_DEBUG(INFO, "\tRange 0x%"PRIx64" does not meet min_blocks (%lu) requirement of bias\n", base, bias->min_blocks);
                 return 0;
         }
 
@@ -359,17 +359,17 @@ int init_pmm(struct ARC_MMap *mmap, int entries) {
 
         max_address_width = arch_physical_address_width();
 
-        ARC_DEBUG(INFO, "Initializing PMM (%lu bit)\n", max_address_width);
+        ARC_DEBUG(INFO, "Initializing PMM (%d bit)\n", max_address_width);
 
         if (max_address_width < pmm_bias_count_high) {
-                ARC_DEBUG(ERR, "More biases for high memory than bits in address width, only using first %lu biases\n", max_address_width);
-                ARC_DEBUG(WARN, "Ignoring %lu biases\n", pmm_bias_count_high - max_address_width);
+                ARC_DEBUG(ERR, "More biases for high memory than bits in address width, only using first %d biases\n", max_address_width);
+                ARC_DEBUG(WARN, "Ignoring %d biases\n", pmm_bias_count_high - max_address_width);
                 pmm_bias_count_high = max_address_width;
         }
 
         if (max_address_width < pmm_bias_count_low) {
-                ARC_DEBUG(ERR, "More biases for low memory than bits in address width, only using first %lu biases\n", max_address_width);
-                ARC_DEBUG(WARN, "Ignoring %lu biases\n", pmm_bias_count_low - max_address_width);
+                ARC_DEBUG(ERR, "More biases for low memory than bits in address width, only using first %d biases\n", max_address_width);
+                ARC_DEBUG(WARN, "Ignoring %d biases\n", pmm_bias_count_low - max_address_width);
                 pmm_bias_count_low = max_address_width;
         }
 

@@ -171,7 +171,7 @@ size_t vwatermark_free(struct ARC_VWatermark *list, void *address) {
         }
 
         if (allocated == NULL) {
-                ARC_DEBUG(ERR, "Could not find %p in meta\n")
+                ARC_DEBUG(ERR, "Could not find %p in meta\n", address)
                 spinlock_unlock(&current->allocated_lock);
                 return 0;
         }

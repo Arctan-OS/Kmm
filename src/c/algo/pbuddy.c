@@ -321,6 +321,9 @@ size_t pbuddy_free(struct ARC_PBuddy *list, void *address) {
 }
 
 int pbuddy_remove(struct ARC_PBuddy *list, struct ARC_PBuddyMeta *meta) {
+        (void)list;
+        (void)meta;
+        ARC_DEBUG(WARN, "Definitely removing pbuddy\n");
         return -1;
 }
 
