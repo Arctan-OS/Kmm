@@ -257,7 +257,7 @@ static void *pbuddy_acquire(struct ARC_PBuddyMeta *meta, int exp) {
                         return NULL;
                 }
         }
-g
+
         return node;
 }
 
