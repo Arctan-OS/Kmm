@@ -60,7 +60,7 @@ static int pbuddy_get_new_meta(struct ARC_PBuddy *list, struct ARC_PBuddyMeta **
         retry:;
 
         *meta_out = pfreelist_alloc(&list->metas);
-
+        
         if (*meta_out != NULL) {
                 memset(*meta_out, 0, obj_size);
                 return 0;
@@ -99,6 +99,11 @@ static void *pbuddy_merge(struct ARC_PBuddyMeta *meta, struct ARC_PBuddyNode *no
         int exp_idx = exp - meta->min_exp;
 
         uintptr_t _buddy = (uintptr_t)node ^ (1 << exp);
+
+        if (_buddy >= (uintptr_t)meta->base + (1 << meta->exp)) {
+                _buddy = (uintptr_t)meta->base + (1 << meta->exp) - (1 << exp);
+        }
+        
         struct ARC_PBuddyNode *buddy = (struct ARC_PBuddyNode *)_buddy;
 
         if (buddy->canary_high != ARC_PBUDDY_CANARY_HIGH
@@ -175,14 +180,18 @@ static int pbuddy_split(struct ARC_PBuddyMeta *meta, struct ARC_PBuddyNode *node
         exp_idx--;
 
         uintptr_t _buddy = (uintptr_t)node ^ (1 << exp);
-        struct ARC_PBuddyNode *buddy = (struct ARC_PBuddyNode *)_buddy;
 
+        if (_buddy < (uintptr_t)meta->base) {
+                _buddy = (uintptr_t)meta->base + (1 << exp);
+        }
+
+        struct ARC_PBuddyNode *buddy = (struct ARC_PBuddyNode *)_buddy;
+        
         buddy->canary_high = ARC_PBUDDY_CANARY_HIGH;
         buddy->canary_low = ARC_PBUDDY_CANARY_LOW;
 
         idx_t buddy_idx = pbuddy_ptr2idx(meta, (uintptr_t)buddy);
         meta->node_metas[buddy_idx].exp = exp;
-
         ARC_ATOMIC_XCHG(&meta->free[exp_idx], &buddy, &buddy->next);
 
         return 0;
@@ -214,7 +223,7 @@ static void *pbuddy_acquire(struct ARC_PBuddyMeta *meta, int exp) {
 
         int c = 1;
         int i = exp_idx + 1;
-
+        
         for (; i < (meta->exp - meta->min_exp + 1) && (node = meta->free[i]) == NULL; i++, c++);
 
         retry:;
@@ -238,7 +247,7 @@ static void *pbuddy_acquire(struct ARC_PBuddyMeta *meta, int exp) {
                 ARC_DEBUG(ERR, "Node has improper canaries\n");
                 return NULL;
         }
-
+        
         for (; c > 0; c--) {
                 if (pbuddy_split(meta, node) != 0) {
                         ARC_DEBUG(WARN, "Split failed, placing freeing node into %d pool (err: %d)\n", exp + c, c);
@@ -248,7 +257,7 @@ static void *pbuddy_acquire(struct ARC_PBuddyMeta *meta, int exp) {
                         return NULL;
                 }
         }
-
+g
         return node;
 }
 
@@ -272,7 +281,7 @@ void *pbuddy_alloc(struct ARC_PBuddy *list, size_t size) {
                 last = current;
                 current = current->next;
         }
-
+        
         if (current == NULL) {
                 ARC_DEBUG(ERR, "Failed to find meta\n");
                 spinlock_unlock(&list->order_lock);
@@ -290,7 +299,7 @@ void *pbuddy_alloc(struct ARC_PBuddy *list, size_t size) {
         spinlock_unlock(&list->order_lock);
 
         void *a = pbuddy_acquire(current, exp);
-
+        
         if (a == NULL && init_pbuddy(list, (uintptr_t)pmm_alloc(1 << list->exp), list->exp, list->min_exp) == 0) {
                 goto retry;
         }
@@ -351,7 +360,7 @@ int init_pbuddy(struct ARC_PBuddy *list, uintptr_t _base, int exp, int min_exp) 
                 pmm_free(node_metas);
                 return -3;
         }
-
+        
         list->exp = exp;
         list->min_exp = min_exp;
 
@@ -369,7 +378,7 @@ int init_pbuddy(struct ARC_PBuddy *list, uintptr_t _base, int exp, int min_exp) 
         node->canary_high = ARC_PBUDDY_CANARY_HIGH;
         node->canary_low = ARC_PBUDDY_CANARY_LOW;
         node->next = NULL;
-
+        
         meta->node_metas[0].exp = exp;
         meta->free[exp - min_exp] = node;
 
