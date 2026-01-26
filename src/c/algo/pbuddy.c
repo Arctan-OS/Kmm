@@ -108,7 +108,7 @@ static void *pbuddy_merge(struct ARC_PBuddyMeta *meta, struct ARC_PBuddyNode *no
 
         if (buddy->canary_high != ARC_PBUDDY_CANARY_HIGH
             || buddy->canary_low != ARC_PBUDDY_CANARY_LOW) {
-                ARC_DEBUG(ERR, "Failed to merge, buddy has improper canaries\n");
+                ARC_DEBUG(WARN, "Failed to merge (%p %p), buddy has improper canaries, not free or corrupted\n", node, buddy);
                 return NULL;
         }
 
@@ -126,7 +126,7 @@ static void *pbuddy_merge(struct ARC_PBuddyMeta *meta, struct ARC_PBuddyNode *no
         }
 
         if (current == NULL) {
-                ARC_DEBUG(ERR, "Could not remove buddy from freelist\n");
+                ARC_DEBUG(ERR, "Could not remove buddy (%p) from freelist\n", buddy);
                 return NULL;
         }
 

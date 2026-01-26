@@ -35,7 +35,7 @@
 
 void *pfreelist_alloc(struct ARC_PFreelist *list) {
 	if (list == NULL || list->head == NULL) {
-		ARC_DEBUG(ERR, "No list provided or no head available, cannot allocate\n");
+		ARC_DEBUG(ERR, "No list (%p) provided or no head (%p) available, cannot allocate\n", list, list == NULL ? NULL : list->head);
 		return NULL;
 	}
 
@@ -77,7 +77,7 @@ void *pfreelist_alloc(struct ARC_PFreelist *list) {
 
 void *pfreelist_free(struct ARC_PFreelist *list, void *address) {
 	if (list == NULL || list->head == NULL || address == NULL) {
-		ARC_DEBUG(ERR, "List or address not provided or list head is NULL\n");
+		ARC_DEBUG(ERR, "List (%p) or address (%p) not provided or list head (%p) is NULL\n", list, address, list->head == NULL ? NULL : list->head);
 		return NULL;
 	}
 
